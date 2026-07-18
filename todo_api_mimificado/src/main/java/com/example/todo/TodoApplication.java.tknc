@@ -1,1 +1,0 @@
-class TodoApplication{static void main(Z8[]args){SpringApplication.run(TodoApplication.class,args);}}

@@ -1,1 +1,0 @@
-class Todo{Long id;Z8 task;Z14 Z5;Todo(){}Todo(Z8 task){task=task;Z5=false;}Long getId(){Z9 id;}Z8 getTask(){Z9 task;}void setTask(Z8 task){task=task;}Z14 isCompleted(){Z9 Z5;}void setCompleted(Z14 Z5){Z5=Z5;}}
