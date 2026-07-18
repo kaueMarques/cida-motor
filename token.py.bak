@@ -1,0 +1,623 @@
+import math
+import re
+import sys
+import shutil
+from pathlib import Path
+from time import sleep
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+    class FileSystemEventHandler:
+        pass
+
+BASE_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+DEFAULT_BASE = 36
+
+
+def read_file(path: str) -> str:
+    """Lê todo o conteúdo de um arquivo de texto e retorna como string."""
+    with open(path, "r", encoding="utf-8") as file:
+        return file.read()
+
+
+def tokenize_words(text: str) -> list[str]:
+    """Extrai palavras de um texto, incluindo identificadores e nomes curtos."""
+    pattern = re.compile(r"[A-Za-zÀ-ÿ0-9_]+", re.UNICODE)
+    return pattern.findall(text)
+
+
+def unique_words_with_ids(words: list[str]) -> list[tuple[int, str]]:
+    """Retorna palavras únicas numeradas na ordem de primeira ocorrência."""
+    seen = {}
+    result = []
+    next_id = 1
+    for word in words:
+        if word not in seen:
+            seen[word] = next_id
+            result.append((next_id, word))
+            next_id += 1
+    return result
+
+
+def encode_id(value: float, base: int = DEFAULT_BASE) -> str:
+    """Converte um número para uma string em base numérica com dígitos alfanuméricos.
+    Valores fracionários são arredondados para cima para evitar problemas matemáticos."""
+    if not isinstance(value, int):
+        value = math.ceil(value)
+    if value < 0:
+        raise ValueError("O valor não pode ser negativo para conversão de base.")
+    if base < 2 or base > len(BASE_DIGITS):
+        raise ValueError(f"Base deve estar entre 2 e {len(BASE_DIGITS)}")
+    if value == 0:
+        return BASE_DIGITS[0]
+    result = []
+    while value > 0:
+        result.append(BASE_DIGITS[value % base])
+        value //= base
+    return "".join(reversed(result))
+
+
+def round_up(value: float, decimals: int = 0) -> float:
+    """Arredonda um valor para cima (ceiling) com precisão de casas decimais."""
+    if decimals < 0:
+        factor = 10 ** (-decimals)
+        return math.ceil(value / factor) * factor
+    factor = 10 ** decimals
+    return math.ceil(value * factor) / factor
+
+
+def format_id(id_value: int, use_alpha: bool = False) -> str:
+    """Formata o ID de acordo com a opção de base alfanumérica."""
+    return encode_id(id_value) if use_alpha else str(id_value)
+
+
+def print_word_map(words_with_ids: list[tuple[int, str]], use_alpha: bool = False) -> None:
+    """Imprime cada palavra única com seu ID no formato CSV simples."""
+    for id_value, word in words_with_ids:
+        print(f"{format_id(id_value, use_alpha)},{word}")
+
+
+def build_id_map(words_with_ids: list[tuple[int, str]], use_alpha: bool = False) -> dict[str, str]:
+    """Retorna um dicionário de palavras para IDs formatados."""
+    return {word: format_id(id_value, use_alpha) for id_value, word in words_with_ids}
+
+
+def translate_text(text: str, id_map: dict[str, str]) -> str:
+    """Substitui palavras no texto pelos seus IDs correspondentes."""
+    pattern = re.compile(r"[A-Za-zÀ-ÿ0-9_]+", re.UNICODE)
+
+    return pattern.sub(lambda m: id_map.get(m.group(0), m.group(0)), text)
+
+
+def _replace_spaces_match(match: re.Match[str]) -> str:
+    """Função auxiliar para substituir espaços baseados na quantidade."""
+    count = len(match.group(0))
+    return "_" if count == 1 else f"§{count}°"
+
+
+def normalize_whitespace(text: str) -> str:
+    """Substitui tabulações por #, quebras de linha por ¬ e espaços por _ (um) ou §{quantidade}° (múltiplos)."""
+    text = text.replace("\n", "¬")
+    text = text.replace("\t", "#")
+    
+    text = re.sub(r" +", _replace_spaces_match, text)
+    return text
+
+
+def save_translated_file(translated_text: str, output_path: Path) -> None:
+    """Salva o texto traduzido no arquivo de saída."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as file:
+        file.write(translated_text)
+
+
+def generate_compression_report(original_size: int, compressed_size: int, original_path: Path, output_dir: Path) -> None:
+    """Gera relatório de compressão em formato de texto."""
+    compression_ratio = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+    
+    report_content = f"""=== RELATÓRIO DE COMPRESSÃO ===
+Arquivo Original: {original_path.name}
+Tamanho Original: {original_size} bytes
+Tamanho Comprimido: {compressed_size} bytes
+Redução: {original_size - compressed_size} bytes
+Porcentagem de Compressão: {compression_ratio:.2f}%
+"""
+    
+    report_path = output_dir / f"{original_path.stem}.relatorio.txt"
+    with open(report_path, "w", encoding="utf-8") as file:
+        file.write(report_content)
+
+
+def generate_general_compression_report(original_size: int, compressed_size: int, project_path: Path, output_dir: Path) -> None:
+    """Gera relatório de compressão geral em formato de texto."""
+    compression_ratio = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+    
+    report_content = f"""=== RELATÓRIO DE COMPRESSÃO GERAL ===
+Projeto: {project_path.name}
+Tamanho Original: {original_size} bytes
+Tamanho Comprimido: {compressed_size} bytes
+Redução: {original_size - compressed_size} bytes
+Porcentagem de Compressão: {compression_ratio:.2f}%
+"""
+    
+    report_path = output_dir / "projeto.relatorio.txt"
+    with open(report_path, "w", encoding="utf-8") as file:
+        file.write(report_content)
+
+class DictionaryManager:
+    """Gerencia um dicionário global de tokens."""
+    
+    def __init__(self, path: Path, use_alpha: bool):
+        self.path = path
+        self.use_alpha = use_alpha
+        self.word_to_id: dict[str, str] = {}
+        self.next_id = 1
+        self.load()
+
+    def load(self) -> None:
+        if self.path.exists():
+            try:
+                with open(self.path, "r", encoding="utf-8") as file:
+                    for line in file:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        parts = line.split(",", 1)
+                        if len(parts) == 2:
+                            id_str, word = parts
+                            self.word_to_id[word] = id_str
+                self.next_id = len(self.word_to_id) + 1
+            except Exception as e:
+                print(f"✗ Erro ao carregar dicionário global: {e}")
+
+    def add_words(self, words: list[str]) -> bool:
+        changed = False
+        for word in words:
+            if word not in self.word_to_id:
+                self.word_to_id[word] = format_id(self.next_id, self.use_alpha)
+                self.next_id += 1
+                changed = True
+        return changed
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(self.path, "w", encoding="utf-8") as file:
+                for word, id_str in self.word_to_id.items():
+                    file.write(f"{id_str},{word}\n")
+        except Exception as e:
+            print(f"✗ Erro ao salvar dicionário global: {e}")
+
+
+def process_file(
+    file_path: Path, 
+    compiled_tokens_dir: Path, 
+    use_alpha: bool = False,
+    dict_manager: 'DictionaryManager' = None,
+    generate_report: bool = True
+) -> tuple[int, int]:
+    """Processa um arquivo individual gerando seus arquivos compilados."""
+    try:
+        conteudo = read_file(str(file_path))
+        words = tokenize_words(conteudo)
+        
+        relative_path = file_path.relative_to(file_path.parent.parent)
+        output_subdir = compiled_tokens_dir / relative_path.parent
+        output_subdir.mkdir(parents=True, exist_ok=True)
+        
+        if dict_manager:
+            dict_manager.add_words(words)
+            dict_manager.save()
+            id_map = dict_manager.word_to_id
+        else:
+            unique_list = unique_words_with_ids(words)
+            map_output_name = f"{file_path.stem}.{file_path.suffix.lstrip('.')}.tknd"
+            map_output_path = output_subdir / map_output_name
+            save_word_map(unique_list, map_output_path, use_alpha=use_alpha)
+            id_map = build_id_map(unique_list, use_alpha=use_alpha)
+            
+        translated_text = translate_text(conteudo, id_map)
+        translated_text = normalize_whitespace(translated_text)
+        translated_output_name = f"{file_path.stem}.{file_path.suffix.lstrip('.')}.tknc"
+        translated_output_path = output_subdir / translated_output_name
+        save_translated_file(translated_text, translated_output_path)
+        
+        original_size = len(conteudo.encode("utf-8"))
+        compressed_size = len(translated_text.encode("utf-8"))
+        if generate_report:
+            generate_compression_report(original_size, compressed_size, file_path, output_subdir)
+        
+        print(f"✓ Compilado: {file_path.name}")
+        return original_size, compressed_size
+    except Exception as e:
+        print(f"✗ Erro ao compilar {file_path.name}: {e}")
+        return 0, 0
+
+
+def process_directory(directory: Path, use_alpha: bool = False, watch: bool = False) -> None:
+    """Processa todos os arquivos em um diretório."""
+    compiled_tokens_dir = directory / "compiled_tokens"
+    compiled_tokens_dir.mkdir(parents=True, exist_ok=True)
+    
+    script_path = Path(__file__)
+    script_dest = compiled_tokens_dir / "token.py"
+    shutil.copy(script_path, script_dest)
+    print(f"Script copiado para: {script_dest}")
+    
+    skill_path = Path(__file__).parent / "SKILL.md"
+    if skill_path.exists():
+        skill_dest = compiled_tokens_dir / "SKILL.md"
+        shutil.copy(skill_path, skill_dest)
+        print(f"Skill copiado para: {skill_dest}")
+    
+    dict_manager = DictionaryManager(compiled_tokens_dir / "dictionary.tknd", use_alpha)
+    
+    total_original = 0
+    total_compressed = 0
+    
+    for file_path in directory.rglob("*"):
+        if any(part.startswith('.') for part in file_path.parts) or "compiled_tokens" in file_path.parts or file_path.suffix == '.jar':
+            continue
+        if file_path.is_file():
+            orig_sz, comp_sz = process_file(file_path, compiled_tokens_dir, use_alpha, dict_manager, generate_report=False)
+            total_original += orig_sz
+            total_compressed += comp_sz
+            
+    generate_general_compression_report(total_original, total_compressed, directory, compiled_tokens_dir)
+    
+    if watch and WATCHDOG_AVAILABLE:
+        start_file_watcher(directory, compiled_tokens_dir, use_alpha, dict_manager)
+    elif watch:
+        print("Aviso: watchdog não está instalado. Modo watch não disponível.")
+
+
+class FileChangeHandler(FileSystemEventHandler):
+    """Manipulador de eventos para o watchdog que reage a alterações nos arquivos."""
+    
+    def __init__(self, compiled_tokens_dir: Path, use_alpha: bool, dict_manager: 'DictionaryManager' = None):
+        self.compiled_tokens_dir = compiled_tokens_dir
+        self.use_alpha = use_alpha
+        self.dict_manager = dict_manager
+
+    def _process_event(self, event):
+        if event.is_directory:
+            return
+        file_path = Path(event.src_path)
+        if any(part.startswith('.') for part in file_path.parts) or "compiled_tokens" in file_path.parts or file_path.suffix == '.jar':
+            return
+        if file_path.is_file():
+            print(f"Detectada alteração/criação: {file_path.name}")
+            process_file(file_path, self.compiled_tokens_dir, self.use_alpha, self.dict_manager, generate_report=False)
+
+    def on_modified(self, event):
+        self._process_event(event)
+        
+    def on_created(self, event):
+        self._process_event(event)
+
+
+def start_file_watcher(
+    directory: Path, 
+    compiled_tokens_dir: Path, 
+    use_alpha: bool, 
+    dict_manager: 'DictionaryManager' = None
+) -> None:
+    """Inicia monitoramento de alterações em arquivos."""
+    
+    observer = Observer()
+    handler = FileChangeHandler(compiled_tokens_dir, use_alpha, dict_manager)
+    observer.schedule(handler, str(directory), recursive=True)
+    observer.start()
+    print(f"Monitorando alterações em: {directory}")
+    print("Pressione Ctrl+C para parar...")
+    
+    try:
+        while True:
+            sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
+
+
+def save_word_map(words_with_ids: list[tuple[int, str]], output_path: Path, use_alpha: bool = False) -> None:
+    """Salva cada palavra única com seu ID no arquivo de saída."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as file:
+        for id_value, word in words_with_ids:
+            file.write(f"{format_id(id_value, use_alpha)},{word}\n")
+
+
+def load_dictionary(tknd_path: Path, use_alpha: bool = False) -> dict[str, str]:
+    """Carrega o dicionário de tokens (.tknd) e retorna mapa ID -> Palavra."""
+    dictionary = {}
+    try:
+        with open(tknd_path, "r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(",", 1)
+                if len(parts) == 2:
+                    id_str, word = parts
+                    dictionary[id_str] = word
+        return dictionary
+    except Exception as e:
+        print(f"✗ Erro ao carregar dicionário: {e}")
+        return {}
+
+
+def denormalize_whitespace(text: str) -> str:
+    """Converte símbolos especiais de volta para espaços, quebras e tabs."""
+    # Converter quebras de linha
+    text = text.replace("¬", "\n")
+    
+    # Converter tabulações
+    text = text.replace("#", "\t")
+    
+    # Converter múltiplos espaços (§n°)
+    text = re.sub(r"§(\d+)°", lambda m: " " * int(m.group(1)), text)
+    
+    # Converter espaços simples
+    text = text.replace("_", " ")
+    
+    return text
+
+
+def decompress_file(tknc_path: Path, tknd_path: Path, use_alpha: bool = False) -> str:
+    """Descompila um arquivo .tknc usando o dicionário .tknd e retorna código original."""
+    try:
+        if not tknc_path.exists():
+            raise FileNotFoundError(f"Arquivo compilado não encontrado: {tknc_path}")
+        if not tknd_path.exists():
+            raise FileNotFoundError(f"Dicionário não encontrado: {tknd_path}")
+        
+        dictionary = load_dictionary(tknd_path, use_alpha)
+        if not dictionary:
+            raise ValueError("Dicionário vazio ou inválido")
+        
+        with open(tknc_path, "r", encoding="utf-8") as file:
+            compiled_text = file.read()
+        
+        # 1. ORDEM CORRETA: Denormalizar espaços PRIMEIRO.
+        # Isso garante que números dentro de §n° sumam antes de buscarmos os IDs dos tokens
+        # e garante que os "_" (underscores) originais das palavras não virem espaços.
+        decompressed_text = denormalize_whitespace(compiled_text)
+        
+        # 2. PADRÃO CORRETO: Usamos o mesmo padrão do compilador.
+        # Se usarmos \d+, falhamos ao tentar recuperar IDs alfanuméricos (-balpha).
+        pattern = re.compile(r"[A-Za-zÀ-ÿ0-9_]+", re.UNICODE)
+        decompressed_text = pattern.sub(lambda m: dictionary.get(m.group(0), m.group(0)), decompressed_text)
+        
+        return decompressed_text
+    except Exception as e:
+        print(f"✗ Erro ao descompilar: {e}")
+        return ""
+
+
+def find_id(tknd_path: Path, target_id: str) -> None:
+    """Busca e exibe a palavra correspondente a um ID no dicionário."""
+    try:
+        if not tknd_path.exists():
+            print(f"✗ Dicionário não encontrado: {tknd_path}")
+            return
+        
+        with open(tknd_path, "r", encoding="utf-8") as file:
+            for line in file:
+                parts = line.strip().split(",", 1)
+                if len(parts) == 2 and parts[0] == target_id:
+                    print(f"✓ ID {target_id} → {parts[1]}")
+                    return
+        print(f"✗ ID '{target_id}' não encontrado em {tknd_path.name}")
+    except Exception as e:
+        print(f"✗ Erro ao buscar ID: {e}")
+
+
+def find_word(tknd_path: Path, target_word: str) -> None:
+    """Busca e exibe o ID correspondente a uma palavra no dicionário."""
+    try:
+        if not tknd_path.exists():
+            print(f"✗ Dicionário não encontrado: {tknd_path}")
+            return
+        
+        with open(tknd_path, "r", encoding="utf-8") as file:
+            for line in file:
+                parts = line.strip().split(",", 1)
+                if len(parts) == 2 and parts[1] == target_word:
+                    print(f"✓ Palavra '{target_word}' → ID {parts[0]}")
+                    return
+        print(f"✗ Palavra '{target_word}' não encontrada em {tknd_path.name}")
+    except Exception as e:
+        print(f"✗ Erro ao buscar palavra: {e}")
+
+
+def add_custom_words_to_dictionary(tknd_path: Path, words: list[str], use_alpha: bool = False) -> None:
+    """Adiciona uma lista de palavras personalizadas ao dicionário."""
+    try:
+        dict_manager = DictionaryManager(tknd_path, use_alpha)
+        words_clean = [w.strip() for w in words if w.strip()]
+        if not words_clean:
+            print("✗ Nenhuma palavra válida fornecida.")
+            return
+            
+        changed = dict_manager.add_words(words_clean)
+        if changed:
+            dict_manager.save()
+            print(f"✓ {len(words_clean)} palavras processadas. Dicionário {tknd_path.name} atualizado.")
+        else:
+            print(f"✓ Todas as palavras fornecidas já existiam no dicionário {tknd_path.name}.")
+    except Exception as e:
+        print(f"✗ Erro ao adicionar palavras: {e}")
+
+
+def process_decompress(tknc_path: Path, tknd_path: Path, use_alpha: bool = False) -> None:
+    """Processa descompilação e salva resultado."""
+    try:
+        original_code = decompress_file(tknc_path, tknd_path, use_alpha)
+        
+        if not original_code:
+            print("✗ Falha ao descompilar arquivo")
+            return
+        
+        stem = tknc_path.stem
+        output_path = tknc_path.parent / stem
+        
+        with open(output_path, "w", encoding="utf-8") as file:
+            file.write(original_code)
+        
+        original_size = len(original_code.encode("utf-8"))
+        print(f"✓ Arquivo descompilado: {output_path}")
+        print(f"  Tamanho recuperado: {original_size} bytes")
+    except Exception as e:
+        print(f"✗ Erro na descompilação: {e}")
+
+
+def main() -> None:
+    """Função principal de execução da CLI."""
+    args = sys.argv[1:]
+    use_alpha = False
+    watch_mode = False
+    decompress_mode = False
+    find_id_mode = False
+    target_id = ""
+    find_word_mode = False
+    target_word = ""
+    add_words_mode = False
+    custom_words = []
+    
+    if "-balpha" in args:
+        use_alpha = True
+        args.remove("-balpha")
+    
+    if "-watch" in args:
+        watch_mode = True
+        args.remove("-watch")
+    
+    if "-decompress" in args:
+        decompress_mode = True
+        args.remove("-decompress")
+
+    if "-find-id" in args:
+        idx = args.index("-find-id")
+        if idx + 1 < len(args):
+            target_id = args[idx + 1]
+            find_id_mode = True
+            del args[idx:idx+2]
+        else:
+            print("✗ Uso incorreto: forneça o ID após -find-id")
+            sys.exit(1)
+            
+    if "-find-word" in args:
+        idx = args.index("-find-word")
+        if idx + 1 < len(args):
+            target_word = args[idx + 1]
+            find_word_mode = True
+            del args[idx:idx+2]
+        else:
+            print("✗ Uso incorreto: forneça a palavra após -find-word")
+            sys.exit(1)
+            
+    if "-add-words" in args:
+        idx = args.index("-add-words")
+        if idx + 1 < len(args):
+            custom_words = args[idx + 1].split(",")
+            add_words_mode = True
+            del args[idx:idx+2]
+        else:
+            print("✗ Uso incorreto: forneça as palavras separadas por vírgula após -add-words")
+            sys.exit(1)
+    
+    if len(args) < 1:
+        print("Uso: python token.py [-balpha] [-watch] [-decompress] [-find-id ID] [-find-word PALAVRA] arquivo_ou_pasta")
+        print("  -balpha: Usar IDs em base alfanumérica")
+        print("  -watch: Monitorar alterações de arquivo (requer watchdog)")
+        print("  -decompress: Descompilar arquivo .tknc para forma original")
+        print("  -find-id <ID>: Buscar palavra por ID em arquivo .tknd")
+        print("  -find-word <PALAVRA>: Buscar ID por palavra em arquivo .tknd")
+        print("  -add-words <P1,P2...>: Adicionar lista de palavras separadas por vírgula ao .tknd")
+        print("")
+        print("Exemplos:")
+        print("  python token.py Calculator.java              # Compilar arquivo")
+        print("  python token.py . -watch                     # Compilar pasta monitorando")
+        print("  python token.py Calculator.java.tknc -decompress  # Descompilar")
+        print("  python token.py Calculator.java.tknd -find-id 17  # Buscar ID")
+        print("  python token.py Calculator.java.tknd -find-word Calculator  # Buscar palavra")
+        print("  python token.py dictionary.tknd -add-words def,class,self   # Preencher dicionário")
+        sys.exit(1)
+
+    path = Path(args[0])
+    
+    if not path.exists() and not add_words_mode:
+        print(f"Caminho não encontrado: {path}")
+        sys.exit(1)
+    
+    if decompress_mode:
+        if not path.suffix == ".tknc":
+            print("✗ Modo -decompress requer arquivo .tknc")
+            sys.exit(1)
+        
+        tknd_path = path.parent / f"{path.stem}.tknd"
+        if not tknd_path.exists():
+            current = path.parent
+            while current != current.parent:
+                if (current / "dictionary.tknd").exists():
+                    tknd_path = current / "dictionary.tknd"
+                    break
+                current = current.parent
+        process_decompress(path, tknd_path, use_alpha)
+        sys.exit(0)
+
+    if find_id_mode:
+        if not path.suffix == ".tknd":
+            print("✗ Modo -find-id requer arquivo .tknd")
+            sys.exit(1)
+        find_id(path, target_id)
+        sys.exit(0)
+        
+    if find_word_mode:
+        if not path.suffix == ".tknd":
+            print("✗ Modo -find-word requer arquivo .tknd")
+            sys.exit(1)
+        find_word(path, target_word)
+        sys.exit(0)
+        
+    if add_words_mode:
+        if not path.suffix == ".tknd":
+            print("✗ Modo -add-words requer arquivo .tknd")
+            sys.exit(1)
+        add_custom_words_to_dictionary(path, custom_words, use_alpha)
+        sys.exit(0)
+    
+    if path.is_file():
+        conteudo = read_file(str(path))
+        words = tokenize_words(conteudo)
+        unique_list = unique_words_with_ids(words)
+        print_word_map(unique_list, use_alpha=use_alpha)
+
+        output_dir = path.parent / "compilado"
+        map_output_name = f"{path.stem}.{path.suffix.lstrip('.')}.tknd"
+        map_output_path = output_dir / map_output_name
+        save_word_map(unique_list, map_output_path, use_alpha=use_alpha)
+        print(f"Arquivo de mapa salvo em: {map_output_path}")
+
+        id_map = build_id_map(unique_list, use_alpha=use_alpha)
+        translated_text = translate_text(conteudo, id_map)
+        translated_text = normalize_whitespace(translated_text)
+        translated_output_name = f"{path.stem}.{path.suffix.lstrip('.')}.tknc"
+        translated_output_path = output_dir / translated_output_name
+        save_translated_file(translated_text, translated_output_path)
+        print(f"Arquivo traduzido salvo em: {translated_output_path}")
+
+        original_size = len(conteudo.encode("utf-8"))
+        compressed_size = len(translated_text.encode("utf-8"))
+        generate_compression_report(original_size, compressed_size, path, output_dir)
+    
+    elif path.is_dir():
+        process_directory(path, use_alpha=use_alpha, watch=watch_mode)
+
+
+if __name__ == "__main__":
+    main()

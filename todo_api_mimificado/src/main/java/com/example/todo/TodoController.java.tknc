@@ -1,0 +1,1 @@
+class TodoController{Z7 Z2;TodoController(Z7 Z2){Z2=Z2;}List<Todo>getAll(){Z9 Z2.findAll();}Todo create(Todo todo){Z9 Z2.save(todo);}}
