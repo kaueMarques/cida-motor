@@ -1,4 +1,8 @@
-# CIDA Motor (Companheira de Desenvolvimento com IA)
+# CIDA Motor
+### Companheira de Desenvolvimento com IA
+
+![Go](https://img.shields.io/badge/Language-Go-blue)
+![Python](https://img.shields.io/badge/Language-Python-yellow)
 
 Ferramenta CLI para tokenização, minificação e compressão de projetos ou arquivos de texto.
 
