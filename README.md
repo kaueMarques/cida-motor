@@ -12,18 +12,24 @@ Ferramenta CLI para tokenização, minificação e compressão de projetos ou ar
 
 ## Como Usar
 
-O projeto utiliza `manager.py` como interface principal. Execute o script para acessar o menu interativo:
+O projeto utiliza o `motor_v3.go` como motor de processamento principal.
+
+### Execução
+
+Para rodar a versão em Go, utilize o comando:
 
 ```bash
-python3 manager.py
+go run motor_v3.go <pasta_original> [pasta_destino] [--watcher]
 ```
 
-Siga as instruções na tela para navegar entre as opções de compilação, descompilação e gestão do dicionário.
+*   `<pasta_original>`: Caminho da pasta que contém o código a ser minificado/tokenizado.
+*   `[pasta_destino]`: (Opcional) Pasta onde os arquivos processados serão salvos. Se omitido, será criada uma pasta com o nome `[pasta_original]_mimificado`.
+*   `[--watcher]`: (Opcional) Ativa o modo de monitoramento (watcher) em tempo real, recompilando automaticamente ao detectar alterações.
 
 ## Estrutura do Projeto
 
-*   `manager.py`: Interface de linha de comando (CLI) principal.
-*   `motor_v3` / `motor_v2.py`: Núcleos de processamento e lógica de compilação/decompilação.
+*   `motor_v3.go`: Motor principal de processamento (versão Go de alta performance).
+*   `motor_v2.py`: Versão legada do motor de processamento (Py).
 *   `md_minifier.py`: Módulo específico para minificação de arquivos Markdown.
 *   `token_counter.py` / `token.py`: Lógica relacionada à contagem e gestão de tokens.
 *   `tests/`: Suite de testes para garantir a integridade da tokenização e minificação.
