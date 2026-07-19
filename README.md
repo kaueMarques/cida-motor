@@ -26,6 +26,14 @@ go run motor_v3.go <pasta_original> [pasta_destino] [--watcher]
 *   `[pasta_destino]`: (Opcional) Pasta onde os arquivos processados serão salvos. Se omitido, será criada uma pasta com o nome `[pasta_original]_mimificado`.
 *   `[--watcher]`: (Opcional) Ativa o modo de monitoramento (watcher) em tempo real, recompilando automaticamente ao detectar alterações.
 
+## Como utilizar com IA
+
+Após a conclusão da minificação:
+
+1. Acesse a pasta de destino gerada (ex: `pasta_mimificada`).
+2. Utilize o arquivo `PROMPT_INICIAL.MD` encontrado dentro desta pasta como contexto inicial ou prompt de sistema no seu CLI de LLM.
+3. Isso garante que a IA compreenda a estrutura tokenizada e o contexto técnico necessário para processar o código minificado.
+
 ## Estrutura do Projeto
 
 *   `motor_v3.go`: Motor principal de processamento (versão Go de alta performance).
