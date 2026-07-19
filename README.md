@@ -1,4 +1,4 @@
-# AI Compiler
+# CIDA Motor (Companheira de Desenvolvimento com IA)
 
 Ferramenta CLI para tokenização, minificação e compressão de projetos ou arquivos de texto.
 
