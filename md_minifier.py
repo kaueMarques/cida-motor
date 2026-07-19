@@ -5,18 +5,18 @@ import json
 from collections import Counter
 
 def estimar_tokens(texto):
-    """Simula o BPE estimando a contagem de tokens do payload."""
+    
     if not texto:
         return 0
     tokens = re.findall(r'[a-zA-Z0-9_]+|[^a-zA-Z0-9_\s]', texto)
     return len(tokens)
 
 def calcular_ter(tokens, caracteres):
-    """Calcula o Token Efficiency Ratio (TER)"""
+    
     return tokens / caracteres if caracteres > 0 else 0
 
 def construir_dicionario_rag(caminho_orig, limite_palavras=300):
-    """Identifica palavras repetidas num Markdown para embutir na tag de script."""
+    
     contador = Counter()
     arquivos_para_ler = []
     
@@ -49,7 +49,7 @@ def construir_dicionario_rag(caminho_orig, limite_palavras=300):
     return dicionario
 
 def minificar_markdown_para_ia(texto, dicionario=None):
-    """Minificação extrema de MD preservando a sintaxe leve e arrancando URLs."""
+    
     texto = re.sub(r'^---\s*[\r\n]+.*?[\r\n]+---\s*[\r\n]+', '', texto, flags=re.DOTALL)
     texto = re.sub(r'<!--.*?-->', '', texto, flags=re.DOTALL)
     
@@ -57,22 +57,22 @@ def minificar_markdown_para_ia(texto, dicionario=None):
         for palavra, id_token in sorted(dicionario.items(), key=lambda x: len(x[0]), reverse=True):
             texto = re.sub(rf'\b{re.escape(palavra)}\b', id_token, texto)
             
-    # Simplifica links e imagens agressivamente (mantém apenas o texto, arrancando as URLs caras)
+    
     texto = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'[\1]', texto) 
     texto = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto)    
     
-    # --- NOVAS TÉCNICAS EXTREMAS PARA MARKDOWN ---
-    # 1. Remove formatação visual (negrito e itálico), pois a IA foca na semântica
+    
+    
     texto = re.sub(r'(?<!\w)(\*\*|__|\*|_)(.*?)\1(?!\w)', r'\2', texto)
     
-    # 2. Remove divisórias horizontais (---, ***, ___) que são irrelevantes para LLMs
+    
     texto = re.sub(r'^[-*_]{3,}\s*$', '', texto, flags=re.MULTILINE)
     
-    # 3. Comprime espaços de alinhamento visual em tabelas
+    
     texto = re.sub(r'\|\s+', '|', texto)
     texto = re.sub(r'\s+\|', '|', texto)
     
-    # Limpa espaços em branco extras, mas preserva a estrutura leve de blocos do Markdown
+    
     texto = re.sub(r' {2,}', ' ', texto)
     texto = re.sub(r'\n{3,}', '\n\n', texto)
     return texto.strip()
@@ -99,7 +99,7 @@ def main():
     dicionario_rag = construir_dicionario_rag(caminho_orig)
     dic_invertido = {id_token: palavra for palavra, id_token in dicionario_rag.items()}
     
-    # Monta o cabeçalho RAG de forma ultra compacta em texto puro (muito mais barato que JSON e scripts)
+    
     if dic_invertido:
         rag_str = ", ".join(f"{k}={v}" for k, v in dic_invertido.items())
         header_rag = f"> 🤖 AI RAG DICT: {rag_str}\n\n"
@@ -127,7 +127,7 @@ def main():
             chars_comp = len(conteudo_final)
             tokens_comp = estimar_tokens(conteudo_final)
             
-            # Se a minificação não resultar em menos tokens, ignoramos o arquivo
+            
             if tokens_comp >= tokens_orig:
                 arquivos_ignorados.append(caminho)
                 print(f"⏭️  Ignorado (sem redução): {caminho}")
@@ -163,7 +163,7 @@ def main():
         except Exception as e:
             print(f"Erro ao processar {caminho}: {e}")
 
-    # Output Final
+    
     print("\n" + "=" * 80)
     print("📊 RESULTADO DO BENCHMARK")
     print("=" * 80)

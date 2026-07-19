@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
-"""
-Token Compilation Manager - Menu Interativo
-Menu interativo para gerenciar compilação e descompilação de arquivos
-"""
+
+
 
 import os
 import sys
@@ -10,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-# Cores para terminal
+
 class Colors:
     HEADER = '\033[95m'
     BLUE = '\033[94m'
@@ -24,12 +21,12 @@ class Colors:
 
 
 def clear_screen():
-    """Limpa a tela do terminal."""
+    
     os.system('clear' if os.name != 'nt' else 'cls')
 
 
 def print_header():
-    """Imprime cabeçalho do menu."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}")
     print("╔═══════════════════════════════════════════════════════════╗")
     print("║          🎯 TOKEN COMPILATION MANAGER 1.0                 ║")
@@ -39,7 +36,7 @@ def print_header():
 
 
 def print_menu():
-    """Imprime menu principal."""
+    
     print(f"{Colors.BOLD}{Colors.BLUE}[MENU PRINCIPAL]{Colors.END}\n")
     print(f"  {Colors.GREEN}1{Colors.END} - 📦 Compilar arquivo individual")
     print(f"  {Colors.GREEN}2{Colors.END} - 📁 Compilar todos os arquivos da pasta")
@@ -53,7 +50,7 @@ def print_menu():
 
 
 def print_advanced_menu():
-    """Imprime menu avançado."""
+    
     print(f"\n{Colors.BOLD}{Colors.BLUE}[OPÇÕES AVANÇADAS]{Colors.END}\n")
     print(f"  {Colors.GREEN}1{Colors.END} - 📦 Compilar com IDs em base alfanumérica (-balpha)")
     print(f"  {Colors.GREEN}2{Colors.END} - 👀 Monitorar com base alfanumérica (-balpha -watch)")
@@ -67,7 +64,7 @@ def print_advanced_menu():
 
 
 def get_user_choice(prompt: str = "Escolha uma opção: ") -> str:
-    """Obtém escolha do usuário."""
+    
     try:
         choice = input(f"{Colors.YELLOW}{prompt}{Colors.END}").strip()
         return choice
@@ -77,7 +74,7 @@ def get_user_choice(prompt: str = "Escolha uma opção: ") -> str:
 
 
 def get_file_path(prompt: str = "Digite o caminho do arquivo: ") -> Optional[Path]:
-    """Obtém e valida caminho de arquivo do usuário."""
+    
     try:
         path_str = input(f"{Colors.YELLOW}{prompt}{Colors.END}").strip()
         path = Path(path_str).expanduser()
@@ -93,7 +90,7 @@ def get_file_path(prompt: str = "Digite o caminho do arquivo: ") -> Optional[Pat
 
 
 def run_token_script(args: list[str]) -> int:
-    """Executa o script token.py com argumentos fornecidos."""
+    
     try:
         token_script = Path(__file__).parent / "token.py"
         cmd = ["python", str(token_script)] + args
@@ -105,7 +102,7 @@ def run_token_script(args: list[str]) -> int:
 
 
 def compile_single_file():
-    """Compila um arquivo individual."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[COMPILAR ARQUIVO INDIVIDUAL]{Colors.END}\n")
     file_path = get_file_path("Digite o caminho do arquivo: ")
     
@@ -123,7 +120,7 @@ def compile_single_file():
 
 
 def compile_directory():
-    """Compila todos os arquivos de uma pasta."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[COMPILAR PASTA]{Colors.END}\n")
     dir_path = get_file_path("Digite o caminho da pasta: ")
     
@@ -141,7 +138,7 @@ def compile_directory():
 
 
 def compile_with_watch():
-    """Compila e monitora alterações."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[COMPILAR E MONITORAR]{Colors.END}\n")
     dir_path = get_file_path("Digite o caminho da pasta: ")
     
@@ -162,7 +159,7 @@ def compile_with_watch():
 
 
 def start_sync_mode():
-    """Inicia o modo de sincronização bidirecional."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[SYNC BIDIRECIONAL]{Colors.END}\n")
     dir_path = get_file_path("Digite o caminho da pasta: ")
     
@@ -183,7 +180,7 @@ def start_sync_mode():
 
 
 def decompress_file():
-    """Descompila um arquivo .tknc."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[DESCOMPILAR ARQUIVO]{Colors.END}\n")
     file_path = get_file_path("Digite o caminho do arquivo .tknc: ")
     
@@ -198,7 +195,7 @@ def decompress_file():
         print(f"{Colors.RED}✗ Arquivo deve ter extensão .tknc (recebido: {file_path.suffix}){Colors.END}")
         return
     
-    # Verificar se dicionário existe
+    
     tknd_path = file_path.parent / f"{file_path.stem}.tknd"
     if not tknd_path.exists():
         current = file_path.parent
@@ -216,7 +213,7 @@ def decompress_file():
     print(f"\n{Colors.GREEN}⏳ Descompilando {file_path.name}...{Colors.END}\n")
     run_token_script([str(file_path), "-decompress"])
     
-    # Mostrar arquivo gerado
+    
     original_path = file_path.parent / file_path.stem
     if original_path.exists():
         print(f"\n{Colors.GREEN}✓ Arquivo descompilado: {original_path}{Colors.END}")
@@ -225,7 +222,7 @@ def decompress_file():
 
 
 def show_compression_stats():
-    """Mostra estatísticas de compressão."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[ESTATÍSTICAS DE COMPILAÇÃO]{Colors.END}\n")
     
     dir_path = get_file_path("Digite o caminho da pasta compilado (ex: ./compilado): ")
@@ -237,7 +234,7 @@ def show_compression_stats():
         print(f"{Colors.RED}✗ Caminho deve ser uma pasta.{Colors.END}")
         return
     
-    # Procurar por arquivos .relatorio.txt
+    
     relatorio_files = list(dir_path.glob("*.relatorio.txt"))
     
     if not relatorio_files:
@@ -254,7 +251,7 @@ def show_compression_stats():
             with open(relatorio, "r", encoding="utf-8") as f:
                 content = f.read()
             
-            # Extrair dados do relatório
+            
             lines = content.split('\n')
             original_size = 0
             compressed_size = 0
@@ -287,7 +284,7 @@ def show_compression_stats():
 
 
 def inspect_compiled_file():
-    """Inspeciona arquivo compilado e mostra dicionário."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[INSPECIONAR ARQUIVO COMPILADO]{Colors.END}\n")
     
     file_path = get_file_path("Digite o caminho do arquivo .tknc: ")
@@ -313,7 +310,7 @@ def inspect_compiled_file():
             print(f"{Colors.RED}✗ Dicionário não encontrado: {tknd_path.name} nem dictionary.tknd{Colors.END}")
             return
     
-    # Ler dicionário
+    
     try:
         with open(tknd_path, "r", encoding="utf-8") as f:
             dictionary = f.readlines()
@@ -338,7 +335,7 @@ def inspect_compiled_file():
 
 
 def find_id_in_dict():
-    """Busca palavra por ID."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[BUSCAR PALAVRA POR ID]{Colors.END}\n")
     tknd_path = get_file_path("Digite o caminho do arquivo .tknd: ")
     if not tknd_path: return
@@ -348,7 +345,7 @@ def find_id_in_dict():
 
 
 def find_word_in_dict():
-    """Busca ID por palavra."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[BUSCAR ID POR PALAVRA]{Colors.END}\n")
     tknd_path = get_file_path("Digite o caminho do arquivo .tknd: ")
     if not tknd_path: return
@@ -358,7 +355,7 @@ def find_word_in_dict():
 
 
 def add_custom_words():
-    """Adiciona palavras personalizadas ao dicionário."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[ADICIONAR PALAVRAS AO DICIONÁRIO]{Colors.END}\n")
     
     file_path = input(f"{Colors.YELLOW}Digite o caminho do arquivo .tknd (existente ou novo): {Colors.END}").strip()
@@ -382,7 +379,7 @@ def add_custom_words():
 
 
 def show_help():
-    """Mostra ajuda completa."""
+    
     print(f"\n{Colors.BOLD}{Colors.CYAN}[AJUDA COMPLETA]{Colors.END}\n")
     print(f"{Colors.BOLD}TOKEN COMPILATION MANAGER{Colors.END}")
     print("Menu interativo para compilação e gerenciamento de tokens\n")
@@ -419,7 +416,7 @@ def show_help():
 
 
 def advanced_menu():
-    """Menu de opções avançadas."""
+    
     while True:
         clear_screen()
         print_header()
@@ -478,7 +475,7 @@ def advanced_menu():
 
 
 def main():
-    """Função principal."""
+    
     while True:
         clear_screen()
         print_header()

@@ -1,0 +1,40 @@
+
+======================================================
+   🧠 LLM TOKEN BENCHMARK - COMPARAÇÃO E GERAÇÃO
+======================================================
+
+
+🔍 Analisando e processando as duas pastas...
+
+
+================================================================================
+🚀 INICIANDO MINIFICAÇÃO E COMPARAÇÃO DE TOKENS
+================================================================================
+📁 Lendo Origem   : /home/kaue/_projetos/_token/skill_para_mimificar.md
+📁 Gerando Destino: /home/kaue/_projetos/_token/skill_para_mimificar_mimificado.html
+--------------------------------------------------------------------------------
+
+⏳ Analisando frequências e construindo Dicionário RAG...
+✓ Dicionário RAG (JS Fake) gerado com 90 termos críticos em: /home/kaue/_projetos/_token/dicionario_rag.js
+--------------------------------------------------------------------------------
+
+📄 skill_para_mimificar.md
+   [Original]   Chars:  15719 | Tokens:   3048 | TER: 0.19
+   [Modificado] Chars:  14105 | Tokens:   3625 | TER: 0.26
+--------------------------------------------------------------------------------
+
+================================================================================
+📊 RESULTADO DO BENCHMARK
+================================================================================
+Pares validados e comparados : 1
+Total de Tokens (Original)   : 3,048
+Total de Tokens (Modificado) : 3,625
+
+--------------------------------------------------------------------------------
+⚠️  ALERTA DE CUSTO: O payload AUMENTOU em +18.93%
+   O formato dos arquivos modificados está inflando a janela de contexto.
+--------------------------------------------------------------------------------
+
+🧠 System Prompt para a IA salvo em: /home/kaue/_projetos/_token/PROMPT_PARA_IA.md
+
+Encerrando ferramenta.
