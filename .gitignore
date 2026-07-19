@@ -1,2 +1,4 @@
 /jdk
 /src_mimificado
+__pycache__/
+*.pyc
