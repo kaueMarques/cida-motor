@@ -7,6 +7,9 @@ import os
 import re
 import sys
 from collections import Counter
+
+
+print("POC V1")
 def estimar_tokens(texto):
     """Calcula tokens usando a biblioteca oficial da OpenAI (tiktoken)."""
     if not texto:
