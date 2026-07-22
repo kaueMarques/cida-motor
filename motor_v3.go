@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -298,6 +299,13 @@ func main() {
 	}
 }
 
+type JavaRawMetric struct {
+	Filepath        string `json:"filepath"`
+	OriginalContent string `json:"original_content"`
+	MinifiedContent string `json:"minified_content"`
+	ElapsedNs       int64  `json:"elapsed_ns"`
+}
+
 func processarEComparar(pastaOrig string, pastaComp string, profile string, dictScope string, failOnInflation bool, reportFormat string, reportPath string, verifySemantics bool, dryRun bool) {
 	absOrig, _ := filepath.Abs(pastaOrig)
 	absComp, _ := filepath.Abs(pastaComp)
@@ -336,43 +344,19 @@ func processarEComparar(pastaOrig string, pastaComp string, profile string, dict
 				javaFiles = append(javaFiles, absPath)
 			} else if strings.HasSuffix(strings.ToLower(absPath), ".md") || strings.HasSuffix(strings.ToLower(absPath), ".txt") {
 				mdFiles = append(mdFiles, absPath)
+			} else {
+				// Unsupported text file - preserve/copy it directly and log
+				fmt.Printf("⚠️ File format not supported for optimization: preserving original %s\n", absPath)
+				binaryFiles = append(binaryFiles, absPath)
 			}
 		}
 		return nil
 	})
 
-	// 2. Process Markdown files in batch using Python
-	if len(mdFiles) > 0 || profile == "markdown" || profile == "bmad" {
-		fmt.Println("⏳ Otimizando arquivos Markdown/BMAD via Python Core...")
-		
-		pyArgs := []string{
-			getToolPath("token_optimizer.py"),
-			"--src", absOrig,
-			"--dst", absComp,
-			"--profile", profile,
-			"--dictionary-scope", dictScope,
-			"--report", reportFormat,
-			"--report-path", reportPath,
-		}
-		if failOnInflation {
-			pyArgs = append(pyArgs, "--fail-on-inflation")
-		}
-		if verifySemantics {
-			pyArgs = append(pyArgs, "--verify-semantics")
-		}
-		if dryRun {
-			pyArgs = append(pyArgs, "--dry-run")
-		}
+	// 2. Process Java files natively in Go
+	var javaMetrics []JavaRawMetric
+	var javaMetricsMu sync.Mutex
 
-		cmd := runPythonCommand(pyArgs...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("⚠️ Erro ao executar o otimizador Python: %v\n", err)
-		}
-	}
-
-	// 3. Process Java files natively in Go
 	if len(javaFiles) > 0 && (profile == "auto" || profile == "java" || profile == "code") {
 		fmt.Println("⏳ Otimizando arquivos Java...")
 		dicionario := construirDicionario(absOrig, absComp)
@@ -395,12 +379,24 @@ func processarEComparar(pastaOrig string, pastaComp string, profile string, dict
 					relPath, _ := filepath.Rel(absOrig, filePath)
 					destPath := filepath.Join(absComp, relPath) + ".tknc"
 					
+					conteudo, _ := os.ReadFile(filePath)
+					start := time.Now()
+					minificado := minificarCodigoParaIA(string(conteudo), dicionario)
+					elapsed := time.Since(start).Nanoseconds()
+					
 					if !dryRun {
 						os.MkdirAll(filepath.Dir(destPath), 0755)
-						conteudo, _ := os.ReadFile(filePath)
-						minificado := minificarCodigoParaIA(string(conteudo), dicionario)
 						os.WriteFile(destPath, []byte(minificado), 0644)
 					}
+					
+					javaMetricsMu.Lock()
+					javaMetrics = append(javaMetrics, JavaRawMetric{
+						Filepath:        relPath,
+						OriginalContent: string(conteudo),
+						MinifiedContent: minificado,
+						ElapsedNs:       elapsed,
+					})
+					javaMetricsMu.Unlock()
 					
 					count := atomic.AddInt64(&processedFiles, 1)
 					remaining := totalFiles - count
@@ -413,8 +409,58 @@ func processarEComparar(pastaOrig string, pastaComp string, profile string, dict
 			jobs <- file
 		}
 		close(jobs)
-		wg.Wait() // Wait for all workers to complete!
+		wg.Wait()
 		fmt.Printf("\n✓ %d arquivos Java processados.\n", len(javaFiles))
+
+		// Write Java raw metrics to temp JSON file
+		if len(javaMetrics) > 0 {
+			javaMetricsJson, err := json.Marshal(javaMetrics)
+			if err == nil {
+				os.WriteFile(filepath.Join(absComp, ".cida_java_raw.json"), javaMetricsJson, 0644)
+			}
+		}
+	}
+
+	// 3. Process Markdown files in batch using Python and compile report
+	if len(mdFiles) > 0 || len(javaFiles) > 0 || profile == "markdown" || profile == "bmad" || profile == "java" {
+		fmt.Println("⏳ Otimizando arquivos Markdown/BMAD via Python Core...")
+		
+		pyArgs := []string{
+			getToolPath("token_optimizer.py"),
+			"--src", absOrig,
+			"--dst", absComp,
+			"--profile", profile,
+			"--dictionary-scope", dictScope,
+			"--report", reportFormat,
+			"--report-path", reportPath,
+		}
+		if failOnInflation {
+			pyArgs = append(pyArgs, "--fail-on-inflation")
+		}
+		if verifySemantics {
+			pyArgs = append(pyArgs, "--verify-semantics")
+		}
+		if dryRun {
+			pyArgs = append(pyArgs, "--dry-run")
+		}
+		// If Java files were processed, pass the raw json parameter
+		if _, err := os.Stat(filepath.Join(absComp, ".cida_java_raw.json")); err == nil {
+			pyArgs = append(pyArgs, "--java-raw-json", filepath.Join(absComp, ".cida_java_raw.json"))
+		}
+
+		cmd := runPythonCommand(pyArgs...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			if exitError, ok := err.(*exec.ExitError); ok {
+				exitCode := exitError.ExitCode()
+				fmt.Printf("⚠️ Otimizador Python falhou com código: %d\n", exitCode)
+				os.Exit(exitCode)
+			} else {
+				fmt.Printf("⚠️ Erro ao executar o otimizador Python: %v\n", err)
+				os.Exit(6) // Subprocess error
+			}
+		}
 	}
 
 	// 4. Copy binary files

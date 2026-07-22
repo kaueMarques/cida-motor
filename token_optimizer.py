@@ -160,12 +160,13 @@ def main():
     parser.add_argument("--src", required=True, help="Source directory or file")
     parser.add_argument("--dst", required=True, help="Destination directory")
     parser.add_argument("--profile", default="auto", choices=["auto", "code", "java", "markdown", "bmad"], help="Processing profile")
-    parser.add_argument("--dictionary-scope", default="file", choices=["none", "file", "corpus", "workflow-session"], help="Dictionary scope")
+    parser.add_argument("--dictionary-scope", default="file", choices=["none", "file", "corpus"], help="Dictionary scope")
     parser.add_argument("--fail-on-inflation", action="store_true", help="Fail if any file has token count inflation")
     parser.add_argument("--report", default="text", choices=["text", "json", "both"], help="Report format")
     parser.add_argument("--report-path", default="report", help="Report output path (without extension)")
     parser.add_argument("--verify-semantics", action="store_true", default=True, help="Run semantic validations")
     parser.add_argument("--dry-run", action="store_true", help="Dry run mode (no files written)")
+    parser.add_argument("--java-raw-json", help="Path to temporary Java raw metrics JSON")
     
     args = parser.parse_args()
     
@@ -176,27 +177,63 @@ def main():
         print(f"Error: Source not found: {src_abs}")
         sys.exit(1)
         
-    # Collect files
+    # Collect files - ONLY collect markdown/text
     files_to_process = []
     if os.path.isfile(src_abs):
-        files_to_process.append(src_abs)
+        if src_abs.endswith('.md') or src_abs.endswith('.txt'):
+            files_to_process.append(src_abs)
     else:
         for root, dirs, files in os.walk(src_abs):
-            # Exclude destination folder to prevent infinite loop
             if dst_abs in os.path.abspath(root):
                 continue
             for f in files:
                 filepath = os.path.join(root, f)
-                # Exclude dictionary folder and already minified files
                 if "tknd" in filepath or "_mimificado" in f:
                     continue
-                files_to_process.append(filepath)
+                if f.endswith('.md') or f.endswith('.txt'):
+                    files_to_process.append(filepath)
                 
     report_gen = ReportGenerator()
     
+    # Read Java raw metrics if present
+    java_raw_metrics = []
+    if args.java_raw_json and os.path.exists(args.java_raw_json):
+        try:
+            with open(args.java_raw_json, 'r', encoding='utf-8') as jf:
+                java_raw_metrics = json.load(jf)
+            # Remove the temp JSON file
+            os.remove(args.java_raw_json)
+        except Exception as je:
+            print(f"Warning: failed to read Java raw metrics JSON: {je}")
+
+    # Process Java raw metrics into report
+    for entry in java_raw_metrics:
+        orig_content = entry["original_content"]
+        mini_content = entry["minified_content"]
+        
+        orig_tokens = count_tokens(orig_content)
+        final_tokens = count_tokens(mini_content)
+        
+        base_content = minificar_codigo_para_ia(orig_content)
+        base_tokens = count_tokens(base_content)
+        
+        report_gen.add_entry(
+            filepath=os.path.join(src_abs, entry["filepath"]),
+            profile="java",
+            tokens_orig=orig_tokens,
+            tokens_base=base_tokens,
+            tokens_new=final_tokens,
+            dict_included=False,
+            tokens_dict=0,
+            accepted_transforms=["go_minification"],
+            rejected_transforms=[],
+            semantic_status="SUCCESS",
+            execution_time=entry["elapsed_ns"] / 1e9
+        )
+    
     # 1. Corpus-level dictionary preparation
     corpus_dict = {}
-    if args.dictionary_scope in ["corpus", "workflow-session"]:
+    if args.dictionary_scope == "corpus":
         all_contents = []
         for fp in files_to_process:
             if not is_binary_file(fp) and (fp.endswith('.md') or fp.endswith('.txt')):
@@ -207,15 +244,12 @@ def main():
                     pass
         corpus_dict = build_corpus_dictionary(all_contents)
         
-        # Write corpus dictionary file if not dry run and we have entries
         if corpus_dict and not args.dry_run:
             tknd_dir = os.path.join(dst_abs, "tknd")
             os.makedirs(tknd_dir, exist_ok=True)
-            # Write in segments of 500
             items = list(corpus_dict.items())
             for i in range(0, len(items), 500):
                 chunk = items[i:i+500]
-                # Format start ID based on index
                 prefixChars = "ABCDEF"
                 start_id = prefixChars[min(i // 500, len(prefixChars)-1)] + str(i % 500)
                 dict_file_path = os.path.join(tknd_dir, f"{start_id}.tknd")
@@ -229,7 +263,6 @@ def main():
     for filepath in files_to_process:
         start_time = time.time()
         
-        # Handle binary files - just copy them
         if is_binary_file(filepath):
             if not args.dry_run:
                 rel_path = os.path.relpath(filepath, src_abs) if os.path.isdir(src_abs) else os.path.basename(filepath)
@@ -253,7 +286,6 @@ def main():
         
         # Baseline: simulate legacy minification (simply md_minifier or motor_v2 logic)
         if profile in ["markdown", "bmad"]:
-            # Legacy md_minifier logic:
             legacy = re.sub(r'^---\s*[\r\n]+.*?[\r\n]+---\s*[\r\n]+', '', content, flags=re.DOTALL)
             legacy = re.sub(r'<!--.*?-->', '', legacy, flags=re.DOTALL)
             legacy = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'[\1]', legacy)
@@ -266,7 +298,6 @@ def main():
             legacy = re.sub(r'\n{3,}', '\n\n', legacy)
             base_tokens = count_tokens(legacy.strip())
         else:
-            # Code/Java baseline:
             legacy = minificar_codigo_para_ia(content)
             base_tokens = count_tokens(legacy)
             
@@ -277,8 +308,6 @@ def main():
         if profile in ["markdown", "bmad"]:
             current_text = content
             
-            # Transformation candidates list
-            # We apply each candidate and verify monotonic reduction + semantic validity
             candidates = [
                 ("remove_html_comments", remove_html_comments),
                 ("trim_trailing_whitespace", trim_trailing_whitespace),
@@ -290,7 +319,6 @@ def main():
             for name, trans_fn in candidates:
                 candidate_text = trans_fn(current_text)
                 
-                # Check semantic validation
                 if args.verify_semantics:
                     is_valid, _ = validate_semantics(content, candidate_text)
                     if not is_valid:
@@ -317,7 +345,6 @@ def main():
                 if file_dict:
                     candidate_text = header_dict + apply_dictionary(current_text, file_dict, pm)
                     
-                    # Verify semantics of dictionary applied version
                     if args.verify_semantics:
                         is_valid, _ = validate_semantics(content, candidate_text, file_dict)
                         if is_valid:
@@ -333,11 +360,10 @@ def main():
                         else:
                             rejected_transforms.append("file_dictionary_semantic_fail")
                             
-            elif args.dictionary_scope in ["corpus", "workflow-session"] and corpus_dict:
+            elif args.dictionary_scope == "corpus" and corpus_dict:
                 pm = ProtectedRegionsManager()
                 candidate_text = apply_dictionary(current_text, corpus_dict, pm)
                 
-                # Verify semantics
                 if args.verify_semantics:
                     is_valid, _ = validate_semantics(content, candidate_text, corpus_dict)
                     if is_valid:
@@ -346,7 +372,7 @@ def main():
                         if cand_tokens < curr_tokens:
                             current_text = candidate_text
                             dict_included = True
-                            tokens_dict = 0 # Dictionary cost is counted globally at corpus level
+                            tokens_dict = 0
                             accepted_transforms.append("corpus_dictionary")
                         else:
                             rejected_transforms.append("corpus_dictionary_no_gain")
@@ -356,7 +382,6 @@ def main():
             final_text = current_text
             final_tokens = count_tokens(final_text)
             
-            # Monotonic Safety fallback: If final tokens is not less than original, revert
             if final_tokens >= orig_tokens:
                 final_text = content
                 final_tokens = orig_tokens
@@ -365,8 +390,7 @@ def main():
                 semantic_status = "SUCCESS"
                 
         else:
-            # Code/Java optimization:
-            final_text = minificar_codigo_para_ia(content, corpus_dict if args.dictionary_scope in ["corpus", "workflow-session"] else None)
+            final_text = minificar_codigo_para_ia(content, corpus_dict if args.dictionary_scope == "corpus" else None)
             final_tokens = count_tokens(final_text)
             dict_included = True if corpus_dict else False
             tokens_dict = 0
@@ -379,14 +403,10 @@ def main():
             inflation_detected = True
             print(f"WARNING: Inflation in {filepath} ({orig_tokens} -> {final_tokens})")
             
-        # Write output
         if not args.dry_run:
             rel_path = os.path.relpath(filepath, src_abs) if os.path.isdir(src_abs) else os.path.basename(filepath)
-            
-            # Preserve folder structure
             dest_path = os.path.join(dst_abs, rel_path)
             
-            # Suffix .tknc for java, keep .md for markdown
             if profile in ["java", "code"] and not dest_path.endswith('.tknc'):
                 dest_path += '.tknc'
                 
@@ -410,10 +430,8 @@ def main():
         
     # Save reports
     report_name = args.report_path
-    if args.report in ["text", "both"]:
-        report_gen.save_reports(report_name + ".md", report_name + ".json")
-    elif args.report == "json":
-        report_gen.save_reports(report_name + ".md", report_name + ".json")
+    if args.report in ["text", "both", "json"]:
+        report_gen.save_reports(report_name + ".md", report_name + ".json", src_abs)
         
     print("\nBenchmark reports saved:")
     print(f"  Markdown: {report_name}.md")
