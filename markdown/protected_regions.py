@@ -10,20 +10,36 @@ class ProtectedRegionsManager:
         self.counter = 0
 
     def protect(self, text):
+        from markdown.block_parser import parse_markdown
+        try:
+            blocks = parse_markdown(text)
+            reconstructed = []
+            for b in blocks:
+                if b.type == "code_block":
+                    placeholder = f"___PROTECTED_REGION_{self.counter}___"
+                    self.protected_map[placeholder] = b.content
+                    self.counter += 1
+                    reconstructed.append(placeholder)
+                else:
+                    reconstructed.append(b.content)
+            temp_text = "".join(reconstructed)
+        except Exception:
+            temp_text = text
+
         patterns = [
-            # Inline code
+            # 1. Inline code
             r'`[^`\n]+`',
-            # Link/Image destinations specifically
+            # 2. Link/Image destinations
             r'(?<=\]\()[^)]+(?=\))',
-            # URLs
+            # 3. URLs
             r'https?://[^\s)\]]+',
-            # Placeholders: {{var}}, {var}, ${VAR}
+            # 4. Placeholders: {{var}}, {var}, ${VAR}
             r'\{\{[\w.-]+\}\}',
             r'\{[\w.-]+\}',
             r'\$\{[\w_]+\}',
-            # XML/HTML tags
+            # 5. XML/HTML tags and comments
             r'<[^>]+>',
-            # BMAD critical terms (exact word match)
+            # 6. BMAD critical terms and identifiers
             r'\bstepsCompleted\b',
             r'\bworkflowType\b',
             r'\binputDocuments\b',
@@ -36,15 +52,17 @@ class ProtectedRegionsManager:
             r'\bsteps-v/?\b',
             r'\b_bmad/?\b',
             r'\b_bmad-output/?\b',
-            # File paths (relative or absolute)
+            # 7. File paths (relative or absolute) and filenames
             r'\b[\w.-]+/[\w.-]+(?:/[\w.-]+)*\b/?',
             r'\b[a-zA-Z]:\\[\w.-\\]*\b',
-            # Terminal commands or class/method names
+            # 8. Terminal commands or class/method names
             r'\b[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*\(\)',
+            # 9. Normative words
+            r'\b(?i:must|never|deve|não|somente|obrigatório)\b',
         ]
         
         # Combine patterns
-        combined = re.compile('|'.join(patterns))
+        combined = re.compile('|'.join(patterns), re.MULTILINE)
         
         def replace_fn(match):
             val = match.group(0)
@@ -53,7 +71,7 @@ class ProtectedRegionsManager:
             self.counter += 1
             return placeholder
             
-        return combined.sub(replace_fn, text)
+        return combined.sub(replace_fn, temp_text)
 
     def restore(self, text):
         current_text = text
@@ -61,3 +79,4 @@ class ProtectedRegionsManager:
         for placeholder, original in reversed(list(self.protected_map.items())):
             current_text = current_text.replace(placeholder, original)
         return current_text
+

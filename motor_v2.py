@@ -71,7 +71,7 @@ def construir_dicionario_rag(pasta_orig, pasta_comp, ext_orig, limite_palavras=3
         end = min(i + 500, len(palavras_impacto))
         start_id = get_b16_id(i)
         
-        with open(os.path.join(pasta_comp, "tknd", f"{start_id}.tknd"), 'w', encoding='utf-8') as fd:
+        with open(os.path.join(pasta_comp, "tknd", f"{start_id}.cidatkn"), 'w', encoding='utf-8') as fd:
             for j in range(i, end):
                 palavra, freq = palavras_impacto[j]
                 if freq >= 3:
