@@ -1,5 +1,10 @@
 import sys
+import os
 import tiktoken
+
+# Force using the offline cache in resources
+dir_path = os.path.dirname(os.path.abspath(__file__))
+os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(dir_path, "resources")
 
 def count_tokens(text):
     try:
@@ -9,6 +14,5 @@ def count_tokens(text):
         return 0
 
 if __name__ == "__main__":
-    
     text = sys.stdin.read()
     print(count_tokens(text))

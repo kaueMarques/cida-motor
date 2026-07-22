@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 )
+
 func getB16ID(n int) string {
 	prefixChars := "ABCDEF"
 	allChars := "0123456789ABCDEF"
@@ -22,13 +23,11 @@ func getB16ID(n int) string {
 	}
 
 	n -= len(prefixChars)
-	// Formato de 2 caracteres (A0, A1... FF)
 	if n < 6*16 {
 		return string(prefixChars[n/16]) + string(allChars[n%16])
 	}
 
 	n -= 6 * 16
-	// Formato de 3 caracteres (garantindo prefixo A-F)
 	prefixIdx := (n / 256) % 6
 	if prefixIdx < 0 {
 		prefixIdx = 0
@@ -38,12 +37,44 @@ func getB16ID(n int) string {
 	return string(prefixChars[prefixIdx]) + string(allChars[(n/16)%16]) + string(allChars[n%16])
 }
 
+func getToolPath(toolName string) string {
+	execPath, err := os.Executable()
+	if err != nil {
+		return toolName
+	}
+	dir := filepath.Dir(execPath)
+	path := filepath.Join(dir, toolName)
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	cwd, _ := os.Getwd()
+	path = filepath.Join(cwd, toolName)
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	return toolName
+}
+
+func runPythonCommand(args ...string) *exec.Cmd {
+	cmd := exec.Command("python", args...)
+	// Set environment variable for offline cache
+	cmd.Env = append(os.Environ(), "TIKTOKEN_CACHE_DIR="+filepath.Join(filepath.Dir(getToolPath("token_counter.py")), "resources"))
+	if err := cmd.Start(); err != nil {
+		cmd = exec.Command("python3", args...)
+		cmd.Env = append(os.Environ(), "TIKTOKEN_CACHE_DIR="+filepath.Join(filepath.Dir(getToolPath("token_counter.py")), "resources"))
+	} else {
+		cmd.Process.Kill()
+		cmd = exec.Command("python", args...)
+		cmd.Env = append(os.Environ(), "TIKTOKEN_CACHE_DIR="+filepath.Join(filepath.Dir(getToolPath("token_counter.py")), "resources"))
+	}
+	return cmd
+}
 
 func estimarTokens(texto string) int {
 	if texto == "" {
 		return 0
 	}
-	cmd := exec.Command("python3", "token_counter.py")
+	cmd := runPythonCommand(getToolPath("token_counter.py"))
 	cmd.Stdin = strings.NewReader(texto)
 	out, err := cmd.Output()
 	if err != nil {
@@ -79,7 +110,6 @@ func ehArquivoDeTeste(root string, file string, pastaOrig string) bool {
 func minificarCodigoParaIA(codigoFonte string, dicionario map[string]string) string {
 	codigo := codigoFonte
 	
-	
 	// Remove comments
 	codigo = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(codigo, "")
 	codigo = regexp.MustCompile(`//.*`).ReplaceAllString(codigo, "")
@@ -105,7 +135,6 @@ func minificarCodigoParaIA(codigoFonte string, dicionario map[string]string) str
 	codigo = regexp.MustCompile(`\s+`).ReplaceAllString(codigo, " ")
 	codigo = regexp.MustCompile(`\s*([+\-*/%&|<>!^~?:;,{}()\[\]=]+)\s*`).ReplaceAllString(codigo, "$1")
 
-	
 	type kv struct {
 		Key   string
 		Value string
@@ -126,22 +155,101 @@ func minificarCodigoParaIA(codigoFonte string, dicionario map[string]string) str
 	return strings.TrimSpace(codigo)
 }
 
+func isBinaryFileGo(filePath string) bool {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	binaryExtensions := map[string]bool{
+		".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
+		".zip": true, ".pdf": true, ".exe": true, ".dll": true,
+		".class": true, ".jar": true, ".db": true, ".pyc": true,
+	}
+	if binaryExtensions[ext] {
+		return true
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		if buffer[i] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Uso: motor_v3 <pasta_original> [pasta_destino] [--watcher]")
+		fmt.Println("Uso: motor_v3 <pasta_original> [pasta_destino] [flags]")
 		return
 	}
 
-	pastaOrig := os.Args[1]
+	// Default choices
+	pastaOrig := ""
 	pastaComp := ""
 	isWatcher := false
+	profile := "auto"
+	dictScope := "file"
+	failOnInflation := false
+	reportFormat := "text"
+	reportPath := ""
+	verifySemantics := true
+	dryRun := false
 
-	for _, arg := range os.Args[2:] {
+	// Parse flags manually to preserve existing go run motor_v3.go <src> [dst] syntax
+	args := os.Args[1:]
+	var positional []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if arg == "--watcher" || arg == "-watch" {
 			isWatcher = true
-		} else if pastaComp == "" {
-			pastaComp = arg
+		} else if arg == "--fail-on-inflation" {
+			failOnInflation = true
+		} else if arg == "--verify-semantics" {
+			verifySemantics = true
+		} else if arg == "--dry-run" {
+			dryRun = true
+		} else if strings.HasPrefix(arg, "--profile=") {
+			profile = strings.TrimPrefix(arg, "--profile=")
+		} else if arg == "--profile" && i+1 < len(args) {
+			profile = args[i+1]
+			i++
+		} else if strings.HasPrefix(arg, "--dictionary-scope=") {
+			dictScope = strings.TrimPrefix(arg, "--dictionary-scope=")
+		} else if arg == "--dictionary-scope" && i+1 < len(args) {
+			dictScope = args[i+1]
+			i++
+		} else if strings.HasPrefix(arg, "--report=") {
+			reportFormat = strings.TrimPrefix(arg, "--report=")
+		} else if arg == "--report" && i+1 < len(args) {
+			reportFormat = args[i+1]
+			i++
+		} else if strings.HasPrefix(arg, "--report-path=") {
+			reportPath = strings.TrimPrefix(arg, "--report-path=")
+		} else if arg == "--report-path" && i+1 < len(args) {
+			reportPath = args[i+1]
+			i++
+		} else if strings.HasPrefix(arg, "-") {
+			// Ignore other unknown flags or print info
+		} else {
+			positional = append(positional, arg)
 		}
+	}
+
+	if len(positional) < 1 {
+		fmt.Println("Uso: motor_v3 <pasta_original> [pasta_destino] [flags]")
+		return
+	}
+
+	pastaOrig = positional[0]
+	if len(positional) > 1 {
+		pastaComp = positional[1]
 	}
 
 	if pastaComp == "" {
@@ -149,19 +257,13 @@ func main() {
 		execDir := filepath.Dir(execPath)
 		pastaComp = filepath.Join(execDir, filepath.Base(pastaOrig)+"_mimificado")
 	}
+	
+	if reportPath == "" {
+		reportPath = filepath.Join(pastaComp, "report")
+	}
 
-	fmt.Println("🚀 Iniciando Minificação (Go Version)")
+	fmt.Println("🚀 Iniciando Otimização e Minificação (CIDA Motor Go/Python)")
 	fmt.Printf("📂 Origem: %s\n📂 Destino: %s\n", pastaOrig, pastaComp)
-
-	var files []string
-	filepath.WalkDir(pastaOrig, func(path string, d os.DirEntry, err error) error {
-		if err != nil { return nil }
-		if d.IsDir() && path == pastaComp { return filepath.SkipDir }
-		if !d.IsDir() {
-			files = append(files, path)
-		}
-		return nil
-	})
 
 	if isWatcher {
 		fmt.Println("👀 Modo Watcher ativado. Pressione Ctrl+C para sair.")
@@ -170,7 +272,11 @@ func main() {
 			changed := false
 			filepath.WalkDir(pastaOrig, func(path string, d os.DirEntry, err error) error {
 				if err != nil { return nil }
-				if d.IsDir() && path == pastaComp { return filepath.SkipDir }
+				absPath, _ := filepath.Abs(path)
+				absComp, _ := filepath.Abs(pastaComp)
+				if d.IsDir() && strings.HasPrefix(absPath, absComp) {
+					return filepath.SkipDir
+				}
 				if !d.IsDir() {
 					info, _ := d.Info()
 					if t, ok := lastModTimes[path]; !ok || info.ModTime().After(t) {
@@ -183,72 +289,145 @@ func main() {
 
 			if changed {
 				fmt.Println("🔄 Alteração detectada, recompilando...")
-				processarEComparar(pastaOrig, pastaComp)
+				processarEComparar(pastaOrig, pastaComp, profile, dictScope, failOnInflation, reportFormat, reportPath, verifySemantics, dryRun)
 			}
 			time.Sleep(2 * time.Second)
 		}
 	} else {
-		processarEComparar(pastaOrig, pastaComp)
+		processarEComparar(pastaOrig, pastaComp, profile, dictScope, failOnInflation, reportFormat, reportPath, verifySemantics, dryRun)
 	}
 }
 
-func processarEComparar(pastaOrig string, pastaComp string) {
-	if _, err := os.Stat(pastaComp); os.IsNotExist(err) {
-		fmt.Printf("📂 Criando pasta de destino: %s\n", pastaComp)
-		os.MkdirAll(pastaComp, 0755)
-		os.MkdirAll(filepath.Join(pastaComp, "tknd"), 0755)
-		criarReadmeMinificado(pastaComp, pastaOrig)
-		criarReadmeTknd(filepath.Join(pastaComp, "tknd"))
-		gerarScriptTraducao(pastaComp)
+func processarEComparar(pastaOrig string, pastaComp string, profile string, dictScope string, failOnInflation bool, reportFormat string, reportPath string, verifySemantics bool, dryRun bool) {
+	absOrig, _ := filepath.Abs(pastaOrig)
+	absComp, _ := filepath.Abs(pastaComp)
+
+	if _, err := os.Stat(absComp); os.IsNotExist(err) && !dryRun {
+		fmt.Printf("📂 Criando pasta de destino: %s\n", absComp)
+		os.MkdirAll(absComp, 0755)
+		os.MkdirAll(filepath.Join(absComp, "tknd"), 0755)
+		criarReadmeMinificado(absComp, absOrig)
+		criarReadmeTknd(filepath.Join(absComp, "tknd"))
+		gerarScriptTraducao(absComp)
 	}
 
-	fmt.Println("⏳ Analisando frequências e construindo dicionário de termos...")
-	dicionario := construirDicionario(pastaOrig, pastaComp)
+	// 1. Scan files
+	var javaFiles []string
+	var mdFiles []string
+	var binaryFiles []string
 
-	var files []string
-	filepath.WalkDir(pastaOrig, func(path string, d os.DirEntry, err error) error {
+	filepath.WalkDir(absOrig, func(path string, d os.DirEntry, err error) error {
 		if err != nil { return nil }
-		if d.IsDir() && path == pastaComp { return filepath.SkipDir }
+		absPath, _ := filepath.Abs(path)
+		
+		// Avoid going into destination folder
+		if d.IsDir() && strings.HasPrefix(absPath, absComp) {
+			return filepath.SkipDir
+		}
+		
 		if !d.IsDir() {
-			files = append(files, path)
+			if strings.Contains(absPath, "_mimificado") || strings.Contains(absPath, "tknd") {
+				return nil
+			}
+			
+			if isBinaryFileGo(absPath) {
+				binaryFiles = append(binaryFiles, absPath)
+			} else if strings.HasSuffix(strings.ToLower(absPath), ".java") {
+				javaFiles = append(javaFiles, absPath)
+			} else if strings.HasSuffix(strings.ToLower(absPath), ".md") || strings.HasSuffix(strings.ToLower(absPath), ".txt") {
+				mdFiles = append(mdFiles, absPath)
+			}
 		}
 		return nil
 	})
 
-	fmt.Printf("✓ Dicionário de termos gerado com %d termos críticos. Processando %d arquivos...\n", len(dicionario), len(files))
+	// 2. Process Markdown files in batch using Python
+	if len(mdFiles) > 0 || profile == "markdown" || profile == "bmad" {
+		fmt.Println("⏳ Otimizando arquivos Markdown/BMAD via Python Core...")
+		
+		pyArgs := []string{
+			getToolPath("token_optimizer.py"),
+			"--src", absOrig,
+			"--dst", absComp,
+			"--profile", profile,
+			"--dictionary-scope", dictScope,
+			"--report", reportFormat,
+			"--report-path", reportPath,
+		}
+		if failOnInflation {
+			pyArgs = append(pyArgs, "--fail-on-inflation")
+		}
+		if verifySemantics {
+			pyArgs = append(pyArgs, "--verify-semantics")
+		}
+		if dryRun {
+			pyArgs = append(pyArgs, "--dry-run")
+		}
 
-	var wg sync.WaitGroup
-	var totalFiles = int64(len(files))
-	var processedFiles int64 = 0
-	jobs := make(chan string, len(files))
-
-	numWorkers := 32
-	for range numWorkers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for filePath := range jobs {
-				relPath, _ := filepath.Rel(pastaOrig, filePath)
-				destPath := filepath.Join(pastaComp, relPath) + ".tknc"
-				os.MkdirAll(filepath.Dir(destPath), 0755)
-
-				conteudo, _ := os.ReadFile(filePath)
-				minificado := minificarCodigoParaIA(string(conteudo), dicionario)
-				os.WriteFile(destPath, []byte(minificado), 0644)
-				
-				count := atomic.AddInt64(&processedFiles, 1)
-				remaining := totalFiles - count
-				fmt.Printf("\rProcessando: %d/%d (Faltam: %d arquivos)...", count, totalFiles, remaining)
-			}
-		}()
+		cmd := runPythonCommand(pyArgs...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("⚠️ Erro ao executar o otimizador Python: %v\n", err)
+		}
 	}
 
-	for _, file := range files {
-		jobs <- file
+	// 3. Process Java files natively in Go
+	if len(javaFiles) > 0 && (profile == "auto" || profile == "java" || profile == "code") {
+		fmt.Println("⏳ Otimizando arquivos Java...")
+		dicionario := construirDicionario(absOrig, absComp)
+		
+		var wg sync.WaitGroup
+		var totalFiles = int64(len(javaFiles))
+		var processedFiles int64 = 0
+		jobs := make(chan string, len(javaFiles))
+		
+		numWorkers := 32
+		if numWorkers > len(javaFiles) {
+			numWorkers = len(javaFiles)
+		}
+		
+		for range numWorkers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for filePath := range jobs {
+					relPath, _ := filepath.Rel(absOrig, filePath)
+					destPath := filepath.Join(absComp, relPath) + ".tknc"
+					
+					if !dryRun {
+						os.MkdirAll(filepath.Dir(destPath), 0755)
+						conteudo, _ := os.ReadFile(filePath)
+						minificado := minificarCodigoParaIA(string(conteudo), dicionario)
+						os.WriteFile(destPath, []byte(minificado), 0644)
+					}
+					
+					count := atomic.AddInt64(&processedFiles, 1)
+					remaining := totalFiles - count
+					fmt.Printf("\rProcessando Java: %d/%d (Faltam: %d arquivos)...", count, totalFiles, remaining)
+				}
+			}()
+		}
+		
+		for _, file := range javaFiles {
+			jobs <- file
+		}
+		close(jobs)
+		wg.Wait() // Wait for all workers to complete!
+		fmt.Printf("\n✓ %d arquivos Java processados.\n", len(javaFiles))
 	}
-	close(jobs)
 
-	// File generation moved into criarReadmeMinificado below
+	// 4. Copy binary files
+	if len(binaryFiles) > 0 && !dryRun {
+		fmt.Printf("⏳ Copiando %d arquivos binários...\n", len(binaryFiles))
+		for _, bf := range binaryFiles {
+			relPath, _ := filepath.Rel(absOrig, bf)
+			destPath := filepath.Join(absComp, relPath)
+			os.MkdirAll(filepath.Dir(destPath), 0755)
+			input, _ := os.ReadFile(bf)
+			os.WriteFile(destPath, input, 0644)
+		}
+	}
 }
 
 func criarReadmeMinificado(pastaDestino string, pastaOrigem string) {
@@ -359,7 +538,6 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Uso: python3 translate.py [ID1] [ID2] ... [--path <caminho_da_pasta_tknd>]")
     else:
-        # Default para pasta tknd relativa ao executável ou diretório atual
         tknd_dir = os.path.join(os.getcwd(), "tknd")
         
         args = sys.argv[1:]
@@ -380,6 +558,7 @@ func construirDicionario(pastaOrig string, pastaComp string) map[string]string {
 
 	filepath.WalkDir(pastaOrig, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() { return nil }
+		if isBinaryFileGo(path) { return nil }
 		conteudo, _ := os.ReadFile(path)
 		palavras := rePalavras.FindAllString(string(conteudo), -1)
 		for _, p := range palavras { contador[p]++ }
@@ -395,7 +574,6 @@ func construirDicionario(pastaOrig string, pastaComp string) map[string]string {
 
 	dicionario := make(map[string]string)
 	
-	// Gerar arquivos de bloco
 	for i := 0; i < len(ss); i += 500 {
 		end := i + 500
 		if end > len(ss) {
