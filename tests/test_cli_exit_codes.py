@@ -10,12 +10,11 @@ class TestCLIExitCodes(unittest.TestCase):
     def setUp(self):
         dir_path = os.path.dirname(os.path.abspath(__file__))
         self.project_root = os.path.normpath(os.path.join(dir_path, "../"))
-        self.go_cli = os.path.join(self.project_root, "motor_v3.exe" if sys.platform == "win32" else "motor_v3")
+        self.temp_dir = tempfile.mkdtemp()
+        self.go_cli = os.path.join(self.temp_dir, "motor_v3.exe" if sys.platform == "win32" else "motor_v3")
         
         # Build Go binary unconditionally to ensure latest changes are included
         subprocess.run(["go", "build", "-o", self.go_cli, "motor_v3.go"], cwd=self.project_root)
-            
-        self.temp_dir = tempfile.mkdtemp()
         
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
