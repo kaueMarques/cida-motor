@@ -441,7 +441,7 @@ def main():
                             "entries": entries_map
                         }
                         dict_file_path = os.path.join(tknd_dir, f"{start_id}.cidatkn")
-                        with open(dict_file_path, 'w', encoding='utf-8') as df:
+                        with open(dict_file_path, 'w', encoding='utf-8', newline='\n') as df:
                             json.dump(sidecar_data, df, indent=4, ensure_ascii=False)
 
     # 2. Process each file
@@ -647,8 +647,9 @@ def main():
                 dest_path += '.tknc'
                 
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            with open(dest_path, 'w', encoding='utf-8') as f:
-                f.write(final_text)
+            final_text_lf = final_text.replace('\r\n', '\n')
+            with open(dest_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(final_text_lf)
                 
             if dict_included and best_sidecar_data is not None:
                 sidecar_path = dest_path + ".cidatkn"

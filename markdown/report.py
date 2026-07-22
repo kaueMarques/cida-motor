@@ -88,11 +88,11 @@ class ReportGenerator:
         # Write only requested report formats
         if report_format in ["text", "both"]:
             os.makedirs(os.path.dirname(os.path.abspath(text_path)), exist_ok=True)
-            with open(text_path, 'w', encoding='utf-8') as f:
+            with open(text_path, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(md_content)
                 
         if report_format in ["json", "both"]:
             os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
-            with open(json_path, 'w', encoding='utf-8') as f:
+            with open(json_path, 'w', encoding='utf-8', newline='\n') as f:
                 json.dump(self.entries, f, indent=4, ensure_ascii=False)
 

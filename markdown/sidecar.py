@@ -136,6 +136,6 @@ def read_sidecar(sidecar_path):
 def write_sidecar(sidecar_path, data):
     validate_sidecar_schema(data)
     os.makedirs(os.path.dirname(os.path.abspath(sidecar_path)), exist_ok=True)
-    with open(sidecar_path, 'w', encoding='utf-8') as f:
+    with open(sidecar_path, 'w', encoding='utf-8', newline='\n') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 

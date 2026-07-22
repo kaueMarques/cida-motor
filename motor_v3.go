@@ -530,7 +530,8 @@ func processarEComparar(pastaOrig string, pastaComp string, profile string, dict
 			
 			if !dryRun {
 				os.MkdirAll(filepath.Dir(info.destPath), 0755)
-				os.WriteFile(info.destPath, []byte(finalContent), 0644)
+				contentToSave := strings.ReplaceAll(finalContent, "\r\n", "\n")
+				os.WriteFile(info.destPath, []byte(contentToSave), 0644)
 			}
 			
 			javaMetrics = append(javaMetrics, JavaRawMetric{
