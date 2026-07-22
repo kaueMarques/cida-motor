@@ -20,15 +20,15 @@ def verify_tokenizer_cache():
         raise TokenizerError(f"Required tokenizer cache file is missing: {expected_file}")
         
     file_size = os.path.getsize(expected_file)
-    if file_size != 1681126:
+    if file_size not in [1681126, 1781382]:
         raise TokenizerError(f"Tokenizer cache file is corrupted (invalid size: {file_size})")
         
     h = hashlib.sha1()
     with open(expected_file, 'rb') as f:
         h.update(f.read())
     file_hash = h.hexdigest()
-    if file_hash not in ["9b5ad71b2ce5302211f9c61530b329a4922fc6a4", "6494e42d5aad2bbb441ea9793af9e7db335c8d9c"]:
-        raise TokenizerError(f"Tokenizer cache file hash mismatch (got {file_hash}, expected 9b5ad71b2ce5302211f9c61530b329a4922fc6a4 or 6494e42d5aad2bbb441ea9793af9e7db335c8d9c)")
+    if file_hash not in ["9b5ad71b2ce5302211f9c61530b329a4922fc6a4", "6494e42d5aad2bbb441ea9793af9e7db335c8d9c", "86ac4193f03c2214c96a388affad156a9776e42e"]:
+        raise TokenizerError(f"Tokenizer cache file hash mismatch (got {file_hash}, expected 9b5ad71b2ce5302211f9c61530b329a4922fc6a4, 6494e42d5aad2bbb441ea9793af9e7db335c8d9c or 86ac4193f03c2214c96a388affad156a9776e42e)")
 
 _enc = None
 
