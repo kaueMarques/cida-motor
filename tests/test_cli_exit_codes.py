@@ -74,11 +74,11 @@ class TestCLIExitCodes(unittest.TestCase):
     def test_exit_code_2_invalid_tokenizer_output(self):
         # Mock token_counter.py to output non-numeric
         counter_path = os.path.join(self.project_root, "token_counter.py")
-        with open(counter_path, "r", encoding="utf-8") as f:
+        with open(counter_path, "rb") as f:
             original_code = f.read()
         try:
-            with open(counter_path, "w", encoding="utf-8") as f:
-                f.write("print('not_numeric')\n")
+            with open(counter_path, "wb") as f:
+                f.write(b"print('not_numeric')\n")
                 
             src = os.path.join(self.temp_dir, "src")
             os.makedirs(src, exist_ok=True)
@@ -88,7 +88,7 @@ class TestCLIExitCodes(unittest.TestCase):
             res = subprocess.run([self.go_cli, src, os.path.join(self.temp_dir, "dst")], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.assertEqual(res.returncode, 2)
         finally:
-            with open(counter_path, "w", encoding="utf-8") as f:
+            with open(counter_path, "wb") as f:
                 f.write(original_code)
 
     def test_exit_code_3_semantic_fail(self):
