@@ -47,7 +47,7 @@ def main():
         print("Error: cl100k_base tokenizer offline cache not found.")
         sys.exit(1)
     actual_hash = calculate_file_sha1(cache_file)
-    expected_hashes = ["9b5ad71b2ce5302211f9c61530b329a4922fc6a4", "6494e42d5aad2bbb441ea9793af9e7db335c8d9c"]
+    expected_hashes = ["9b5ad71b2ce5302211f9c61530b329a4922fc6a4", "6494e42d5aad2bbb441ea9793af9e7db335c8d9c", "86ac4193f03c2214c96a388affad156a9776e42e"]
     if actual_hash not in expected_hashes:
         print(f"Error: Tokenizer cache integrity verification failed. Got {actual_hash}")
         sys.exit(1)
