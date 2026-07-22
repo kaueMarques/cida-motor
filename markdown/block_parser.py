@@ -37,6 +37,11 @@ def find_frontmatter_end(lines):
                 continue
     return -1
 
+def has_frontmatter_at_document_start(text):
+    if text.startswith('\ufeff'):
+        text = text[1:]
+    return bool(re.match(r'^---[ \t]*[\r\n]', text)) or text == '---'
+
 def parse_markdown(text):
     """
     Splits the markdown text into block objects deterministically.
@@ -45,12 +50,7 @@ def parse_markdown(text):
     blocks = []
     
     # 1. Frontmatter check
-    has_frontmatter = False
-    if lines:
-        first_line = lines[0]
-        first_line_clean = first_line[1:] if first_line.startswith('\ufeff') else first_line
-        if first_line_clean.strip() == "---":
-            has_frontmatter = True
+    has_frontmatter = has_frontmatter_at_document_start(text)
             
     line_idx = 0
     if has_frontmatter:

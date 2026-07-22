@@ -111,12 +111,22 @@ def validate_sidecar(data, expected_rel_path, original_bytes):
         if alias in original_words:
             raise SidecarValidationError(f"Alias '{alias}' collides with content word in original file")
 
+def reject_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise SidecarValidationError(
+                f"Duplicate JSON key: {key}"
+            )
+        result[key] = value
+    return result
+
 def read_sidecar(sidecar_path):
     if not os.path.exists(sidecar_path):
         raise SidecarValidationError(f"Sidecar file not found: {sidecar_path}")
     try:
         with open(sidecar_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+            data = json.load(f, object_pairs_hook=reject_duplicate_keys)
     except Exception as e:
         raise SidecarValidationError(f"Failed to parse sidecar JSON: {e}")
         

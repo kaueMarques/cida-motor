@@ -13,7 +13,7 @@ from markdown.phrase_dictionary import (
 )
 from markdown.semantic_validator import validate_semantics
 from markdown.report import ReportGenerator
-from markdown.sidecar import write_sidecar, create_sidecar_data, validate_sidecar
+from markdown.sidecar import write_sidecar, create_sidecar_data, validate_sidecar, reject_duplicate_keys, SidecarValidationError, validate_sidecar_schema
 
 def optimize_markdown_dictionary_file_scope(content, transformed_text, filepath, verify_semantics):
     # Base tokens of transformed_text (without dictionary)
@@ -236,6 +236,25 @@ def is_binary_file(filepath):
         pass
     return False
 
+def verify_destination_sidecars(src_abs, dst_abs):
+    for root, _, files in os.walk(dst_abs):
+        for f in files:
+            if f.endswith(".cidatkn"):
+                sidecar_path = os.path.join(root, f)
+                try:
+                    with open(sidecar_path, 'r', encoding='utf-8') as sf:
+                        data = json.load(sf, object_pairs_hook=reject_duplicate_keys)
+                    validate_sidecar_schema(data)
+                    if data.get("source") != "corpus":
+                        orig_file_path = os.path.join(src_abs, data["source"])
+                        if os.path.exists(orig_file_path):
+                            with open(orig_file_path, 'rb') as obf:
+                                orig_bytes = obf.read()
+                            validate_sidecar(data, data["source"], orig_bytes)
+                except Exception as e:
+                    print(f"Sidecar validation failed for {f}: {e}", file=sys.stderr)
+                    sys.exit(5)
+
 def main():
     parser = argparse.ArgumentParser(description="Token-oriented Markdown Minifier for BMAD")
     parser.add_argument("--src", required=True, help="Source directory or file")
@@ -281,7 +300,7 @@ def main():
     if args.java_raw_json and os.path.exists(args.java_raw_json):
         try:
             with open(args.java_raw_json, 'r', encoding='utf-8') as jf:
-                java_raw_metrics = json.load(jf)
+                java_raw_metrics = json.load(jf, object_pairs_hook=reject_duplicate_keys)
             # Remove the temp JSON file
             os.remove(args.java_raw_json)
         except Exception as je:
@@ -305,7 +324,8 @@ def main():
             tokens_base=base_tokens,
             tokens_new=final_tokens,
             dict_included=entry.get("dict_included", False),
-            tokens_dict=entry.get("tokens_dict", 0),
+            tokens_sidecar=entry.get("tokens_sidecar", 0),
+            tokens_aux=entry.get("tokens_auxiliares", 0),
             accepted_transforms=["go_minification"],
             rejected_transforms=[],
             semantic_status="SUCCESS",
@@ -473,7 +493,8 @@ def main():
         rejected_transforms = []
         
         dict_included = False
-        tokens_dict = 0
+        tokens_sidecar = 0
+        tokens_aux = 0
         best_sidecar_data = None
         
         if profile in ["markdown", "bmad"]:
@@ -512,11 +533,21 @@ def main():
                     content, current_text, rel_path, args.verify_semantics
                 )
                 if sidecar_data:
-                    current_text = candidate_text
-                    dict_included = True
-                    tokens_dict = dict_tokens
-                    best_sidecar_data = sidecar_data
-                    accepted_transforms.append("file_dictionary")
+                    cand_tokens = count_tokens(candidate_text)
+                    cand_sidecar_tokens = count_tokens(json.dumps(sidecar_data, ensure_ascii=False, indent=4))
+                    cand_aux_tokens = count_tokens("Use the companion sidecar file to resolve aliases.")
+                    
+                    economia_bruta = orig_tokens - cand_tokens
+                    overhead = cand_sidecar_tokens + cand_aux_tokens
+                    if economia_bruta - overhead > 0:
+                        current_text = candidate_text
+                        dict_included = True
+                        tokens_sidecar = cand_sidecar_tokens
+                        tokens_aux = cand_aux_tokens
+                        best_sidecar_data = sidecar_data
+                        accepted_transforms.append("file_dictionary")
+                    else:
+                        rejected_transforms.append("file_dictionary_no_gain")
                 else:
                     rejected_transforms.append("file_dictionary_no_gain")
                     
@@ -530,10 +561,19 @@ def main():
                         cand_tokens = count_tokens(candidate_text)
                         curr_tokens = count_tokens(current_text)
                         if cand_tokens < curr_tokens:
-                            current_text = candidate_text
-                            dict_included = True
-                            tokens_dict = 0
-                            accepted_transforms.append("corpus_dictionary")
+                            cand_sidecar_tokens = int(sidecar_tokens_total * orig_tokens / total_orig_tokens)
+                            cand_aux_tokens = int(auxiliary_tokens * orig_tokens / total_orig_tokens)
+                            
+                            economia_bruta = orig_tokens - cand_tokens
+                            overhead = cand_sidecar_tokens + cand_aux_tokens
+                            if economia_bruta - overhead > 0:
+                                current_text = candidate_text
+                                dict_included = True
+                                tokens_sidecar = cand_sidecar_tokens
+                                tokens_aux = cand_aux_tokens
+                                accepted_transforms.append("corpus_dictionary")
+                            else:
+                                rejected_transforms.append("corpus_dictionary_no_gain")
                         else:
                             rejected_transforms.append("corpus_dictionary_no_gain")
                     else:
@@ -542,12 +582,15 @@ def main():
             final_text = current_text
             final_tokens = count_tokens(final_text)
             
-            # Revert if no gain
-            if final_tokens >= orig_tokens:
+            # Revert if no gain (economia_liquida <= 0)
+            economia_bruta = orig_tokens - final_tokens
+            overhead = tokens_sidecar + tokens_aux
+            if economia_bruta - overhead <= 0:
                 final_text = content
                 final_tokens = orig_tokens
                 dict_included = False
-                tokens_dict = 0
+                tokens_sidecar = 0
+                tokens_aux = 0
                 best_sidecar_data = None
                 semantic_status = "UNCHANGED_NO_TOKEN_GAIN"
             else:
@@ -557,10 +600,39 @@ def main():
             final_text = minificar_codigo_para_ia(content, corpus_dict if args.dictionary_scope == "corpus" else None)
             final_tokens = count_tokens(final_text)
             dict_included = True if corpus_dict else False
-            tokens_dict = 0
-            semantic_status = "SUCCESS"
+            tokens_sidecar = 0
+            tokens_aux = 0
+            if dict_included:
+                tokens_sidecar = int(sidecar_tokens_total * orig_tokens / total_orig_tokens)
+                tokens_aux = int(auxiliary_tokens * orig_tokens / total_orig_tokens)
+                
+            economia_bruta = orig_tokens - final_tokens
+            overhead = tokens_sidecar + tokens_aux
+            if economia_bruta - overhead <= 0:
+                final_text = content
+                final_tokens = orig_tokens
+                dict_included = False
+                tokens_sidecar = 0
+                tokens_aux = 0
+                semantic_status = "UNCHANGED_NO_TOKEN_GAIN"
+            else:
+                semantic_status = "SUCCESS"
             
         exec_time = time.time() - start_time
+        
+        # Verify semantics of final_text
+        if args.verify_semantics:
+            validation_dict = {}
+            if dict_included:
+                if best_sidecar_data:
+                    validation_dict = {v: k for k, v in best_sidecar_data["entries"].items()}
+                elif corpus_dict:
+                    validation_dict = corpus_dict
+            
+            is_valid, msg = validate_semantics(content, final_text, validation_dict)
+            if not is_valid:
+                print(f"Semantic validation failed for {filepath}: {msg}", file=sys.stderr)
+                sys.exit(3)
         
         # Check inflation
         if final_tokens > orig_tokens:
@@ -589,7 +661,8 @@ def main():
             tokens_base=base_tokens,
             tokens_new=final_tokens,
             dict_included=dict_included,
-            tokens_dict=tokens_dict,
+            tokens_sidecar=tokens_sidecar,
+            tokens_aux=tokens_aux,
             accepted_transforms=accepted_transforms,
             rejected_transforms=rejected_transforms,
             semantic_status=semantic_status,
@@ -607,6 +680,9 @@ def main():
     if args.fail_on_inflation and inflation_detected:
         print("Error: Inflation detected during token optimization.")
         sys.exit(1)
+        
+    if not args.dry_run:
+        verify_destination_sidecars(src_abs, dst_abs)
 
 if __name__ == "__main__":
     main()

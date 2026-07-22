@@ -1,7 +1,8 @@
 import re
 import yaml
 import json
-from markdown.block_parser import parse_markdown
+from markdown.block_parser import parse_markdown, has_frontmatter_at_document_start
+from markdown.sidecar import reject_duplicate_keys
 
 class UniqueKeyLoader(yaml.SafeLoader):
     def construct_mapping(self, node, deep=False):
@@ -56,7 +57,7 @@ def extract_all_protected_elements(text):
         # Inline code
         r'`[^`\n]+`',
         # Link/Image destinations
-        r'(?<=\]\()[^)]+(?=\))',
+        r'(?<=\]\()(?:\([^)]*\)|[^)])+(?=\))',
         # URLs
         r'https?://[^\s)\]]+',
         # Placeholders
@@ -93,7 +94,7 @@ def extract_inline_elements(text):
     Extracts inline code blocks, links, placeholders, and XML/HTML tags.
     """
     inline_codes = re.findall(r'`([^`\n]+)`', text)
-    links = re.findall(r'\[([^\]]*)\]\(([^)]+)\)', text)
+    links = re.findall(r'\[([^\]]*)\]\(((?:\([^)]*\)|[^)])+)\)', text)
     placeholders = re.findall(r'(\{\{[\w.-]+\}\}|\{[\w.-]+\}|\$\{[\w_]+\})', text)
     tags = re.findall(r'(<[^>]+>)', text)
     return {
@@ -102,6 +103,25 @@ def extract_inline_elements(text):
         "placeholders": placeholders,
         "tags": tags,
     }
+
+def split_table_row(row_text):
+    parts = []
+    current = []
+    in_code = False
+    i = 0
+    while i < len(row_text):
+        char = row_text[i]
+        if char == '`':
+            in_code = not in_code
+            current.append(char)
+        elif char == '|' and not in_code:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        i += 1
+    parts.append("".join(current))
+    return parts
 
 def classify_comment(comment_text):
     m = re.match(r'^<!--([\s\S]*)-->$', comment_text.strip())
@@ -119,7 +139,7 @@ def classify_comment(comment_text):
         return "operational"
     if (content.startswith('{') and content.endswith('}')) or (content.startswith('[') and content.endswith(']')):
         try:
-            json.loads(content)
+            json.loads(content, object_pairs_hook=reject_duplicate_keys)
             return "operational"
         except Exception:
             pass
@@ -146,8 +166,8 @@ def validate_semantics(original_text, minified_text, dictionary=None):
     Validates that the minified Markdown is semantically and structurally equivalent to the original.
     """
     try:
-        orig_has_fm = original_text.strip().startswith('---')
-        mini_has_fm = minified_text.strip().startswith('---')
+        orig_has_fm = has_frontmatter_at_document_start(original_text)
+        mini_has_fm = has_frontmatter_at_document_start(minified_text)
         if orig_has_fm != mini_has_fm:
             return False, f"Frontmatter presence mismatch: original {orig_has_fm} vs minified {mini_has_fm}"
             
@@ -241,13 +261,13 @@ def validate_semantics(original_text, minified_text, dictionary=None):
                     return False, f"Table line count mismatch at index {idx}"
                 for row_idx, (ol, dl) in enumerate(zip(orig_lines, decomp_lines)):
                     if row_idx == 1:
-                        o_sep = [c.strip() for c in ol.split('|') if c.strip()]
-                        d_sep = [c.strip() for c in dl.split('|') if c.strip()]
+                        o_sep = [c.strip() for c in split_table_row(ol) if c.strip()]
+                        d_sep = [c.strip() for c in split_table_row(dl) if c.strip()]
                         if o_sep != d_sep:
                             return False, f"Table columns alignment mismatch at index {idx}"
                     else:
-                        o_cells = [c.strip() for c in ol.split('|') if c.strip()]
-                        d_cells = [c.strip() for c in dl.split('|') if c.strip()]
+                        o_cells = [c.strip() for c in split_table_row(ol) if c.strip()]
+                        d_cells = [c.strip() for c in split_table_row(dl) if c.strip()]
                         if o_cells != d_cells:
                             return False, f"Table cells content mismatch at index {idx}, row {row_idx}"
                             

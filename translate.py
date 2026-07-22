@@ -1,21 +1,32 @@
-# AVISO PARA A I.A.: Ao usar este script para traduzir identificadores,
-# armazene a tradução em seu contexto imediato para evitar chamadas redundantes.
-
 import os
 import sys
+import json
+
+def reject_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
 
 def translate(tokens, tknd_dir):
     mapping = {}
     if not os.path.exists(tknd_dir):
-        return f"Erro: Pasta {tknd_dir} não encontrada."
+        print(f"Erro: Pasta {tknd_dir} não encontrada.", file=sys.stderr)
+        sys.exit(5)
     
     for file in os.listdir(tknd_dir):
-        if file.endswith(".tknd"):
-            with open(os.path.join(tknd_dir, file), 'r', encoding='utf-8') as f:
-                for line in f:
-                    parts = line.strip().split('=')
-                    if len(parts) == 2:
-                        mapping[parts[0]] = parts[1]
+        if file.endswith(".cidatkn"):
+            try:
+                with open(os.path.join(tknd_dir, file), 'r', encoding='utf-8') as f:
+                    data = json.load(f, object_pairs_hook=reject_duplicate_keys)
+                    if isinstance(data, dict) and "entries" in data:
+                        for alias, val in data["entries"].items():
+                            mapping[alias] = val
+            except Exception as e:
+                print(f"Erro ao ler dicionário {file}: {e}", file=sys.stderr)
+                sys.exit(5)
     
     results = {}
     for t in tokens:
@@ -26,7 +37,6 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Uso: python3 translate.py [ID1] [ID2] ... [--path <caminho_da_pasta_tknd>]")
     else:
-        # Default para pasta tknd relativa ao executável ou diretório atual
         tknd_dir = os.path.join(os.getcwd(), "tknd")
         
         args = sys.argv[1:]
@@ -37,3 +47,4 @@ if __name__ == "__main__":
                 args = args[:idx] + args[idx+2:]
         
         print(translate(args, tknd_dir))
+
