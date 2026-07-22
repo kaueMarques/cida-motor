@@ -292,6 +292,7 @@ def main():
                     continue
                 if f.endswith('.md') or f.endswith('.txt'):
                     files_to_process.append(filepath)
+    files_to_process.sort()
                 
     report_gen = ReportGenerator()
     
