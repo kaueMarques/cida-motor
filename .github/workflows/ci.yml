@@ -2,9 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, feat/bmad-markdown-token-optimizer ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   test:
