@@ -188,7 +188,7 @@ func isBinaryFileGo(filePath string) bool {
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Uso: motor_v3 <pasta_original> [pasta_destino] [flags]")
-		return
+		os.Exit(1)
 	}
 
 	// Default choices
@@ -246,12 +246,18 @@ func main() {
 
 	if len(positional) < 1 {
 		fmt.Println("Uso: motor_v3 <pasta_original> [pasta_destino] [flags]")
-		return
+		os.Exit(1)
 	}
 
 	pastaOrig = positional[0]
 	if len(positional) > 1 {
 		pastaComp = positional[1]
+	}
+
+	// Verify pastaOrig existence
+	if _, err := os.Stat(pastaOrig); os.IsNotExist(err) {
+		fmt.Printf("❌ Erro: Diretório ou arquivo de origem não encontrado: %s\n", pastaOrig)
+		os.Exit(4)
 	}
 
 	if pastaComp == "" {

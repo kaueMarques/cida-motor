@@ -1,5 +1,6 @@
 import re
 import string
+import sys
 import tiktoken
 
 _enc = None
@@ -7,8 +8,12 @@ _enc = None
 def get_encoder():
     global _enc
     if _enc is None:
-        # Assumes TIKTOKEN_CACHE_DIR is set to point to the local cache folder
-        _enc = tiktoken.get_encoding("cl100k_base")
+        try:
+            # Assumes TIKTOKEN_CACHE_DIR is set to point to the local cache folder
+            _enc = tiktoken.get_encoding("cl100k_base")
+        except Exception as e:
+            print(f"Error: Tokenizer is unavailable/offline: {e}", file=sys.stderr)
+            sys.exit(5)
     return _enc
 
 def count_tokens(text):
