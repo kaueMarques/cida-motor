@@ -11,19 +11,21 @@ class ProtectedRegionsManager:
 
     def protect(self, text):
         patterns = [
-            # Inline code
+            # 1. Fenced code blocks (3 or more backticks or tildes)
+            r'^(?:`{3,}|~{3,})[\s\S]*?^(?:`{3,}|~{3,})',
+            # 2. Inline code
             r'`[^`\n]+`',
-            # Link/Image destinations specifically
+            # 3. Link/Image destinations
             r'(?<=\]\()[^)]+(?=\))',
-            # URLs
+            # 4. URLs
             r'https?://[^\s)\]]+',
-            # Placeholders: {{var}}, {var}, ${VAR}
+            # 5. Placeholders: {{var}}, {var}, ${VAR}
             r'\{\{[\w.-]+\}\}',
             r'\{[\w.-]+\}',
             r'\$\{[\w_]+\}',
-            # XML/HTML tags
+            # 6. XML/HTML tags and comments
             r'<[^>]+>',
-            # BMAD critical terms (exact word match)
+            # 7. BMAD critical terms and identifiers
             r'\bstepsCompleted\b',
             r'\bworkflowType\b',
             r'\binputDocuments\b',
@@ -36,15 +38,17 @@ class ProtectedRegionsManager:
             r'\bsteps-v/?\b',
             r'\b_bmad/?\b',
             r'\b_bmad-output/?\b',
-            # File paths (relative or absolute)
+            # 8. File paths (relative or absolute) and filenames
             r'\b[\w.-]+/[\w.-]+(?:/[\w.-]+)*\b/?',
             r'\b[a-zA-Z]:\\[\w.-\\]*\b',
-            # Terminal commands or class/method names
+            # 9. Terminal commands or class/method names
             r'\b[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*\(\)',
+            # 10. Normative words
+            r'\b(?i:must|never|deve|não|somente|obrigatório)\b',
         ]
         
         # Combine patterns
-        combined = re.compile('|'.join(patterns))
+        combined = re.compile('|'.join(patterns), re.MULTILINE)
         
         def replace_fn(match):
             val = match.group(0)
@@ -61,3 +65,4 @@ class ProtectedRegionsManager:
         for placeholder, original in reversed(list(self.protected_map.items())):
             current_text = current_text.replace(placeholder, original)
         return current_text
+
