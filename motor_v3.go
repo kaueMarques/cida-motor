@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -558,9 +559,24 @@ Caso seja estritamente necessário entender um identificador, utilize o script '
 `
 }
 
+type SidecarEntry struct {
+	Alias string `json:"alias"`
+	Value string `json:"value"`
+}
+
+type SidecarData struct {
+	Format       string         `json:"format"`
+	Version      int            `json:"version"`
+	Source       string         `json:"source"`
+	SourceSha256 string         `json:"source_sha256"`
+	Tokenizer    string         `json:"tokenizer"`
+	Entries      []SidecarEntry `json:"entries"`
+}
+
 func gerarScriptTraducao(pastaDestino string) {
 	conteudo := `import os
 import sys
+import json
 
 def translate(tokens, tknd_dir):
     mapping = {}
@@ -568,12 +584,21 @@ def translate(tokens, tknd_dir):
         return f"Erro: Pasta {tknd_dir} não encontrada."
     
     for file in os.listdir(tknd_dir):
-        if file.endswith(".tknd"):
-            with open(os.path.join(tknd_dir, file), 'r', encoding='utf-8') as f:
-                for line in f:
-                    parts = line.strip().split('=')
-                    if len(parts) == 2:
-                        mapping[parts[0]] = parts[1]
+        if file.endswith(".cidatkn") or file.endswith(".tknd"):
+            try:
+                with open(os.path.join(tknd_dir, file), 'r', encoding='utf-8') as f:
+                    if file.endswith(".cidatkn"):
+                        data = json.load(f)
+                        if isinstance(data, dict) and "entries" in data:
+                            for entry in data["entries"]:
+                                mapping[entry["alias"]] = entry["value"]
+                    else:
+                        for line in f:
+                            parts = line.strip().split('=')
+                            if len(parts) == 2:
+                                mapping[parts[0]] = parts[1]
+            except Exception:
+                pass
     
     results = {}
     for t in tokens:
@@ -627,17 +652,37 @@ func construirDicionario(pastaOrig string, pastaComp string) map[string]string {
 		}
 		
 		startID := getB16ID(i)
-		fileName := fmt.Sprintf("%s.tknd", startID)
-		file, _ := os.Create(filepath.Join(pastaComp, "tknd", fileName))
 		
+		var entries []SidecarEntry
 		for j := i; j < end; j++ {
 			if ss[j].Freq >= 3 {
 				token := getB16ID(j)
 				dicionario[ss[j].Key] = token
-				file.WriteString(fmt.Sprintf("%s=%s\n", token, ss[j].Key))
+				entries = append(entries, SidecarEntry{Alias: token, Value: ss[j].Key})
 			}
 		}
-		file.Close()
+		
+		if len(entries) > 0 {
+			sort.Slice(entries, func(x, y int) bool {
+				return entries[x].Alias < entries[y].Alias
+			})
+			
+			entriesBytes, _ := json.Marshal(entries)
+			hash := fmt.Sprintf("%x", sha256.Sum256(entriesBytes))
+			
+			sidecar := SidecarData{
+				Format:       "cida-token-dictionary",
+				Version:      1,
+				Source:       "corpus",
+				SourceSha256: hash,
+				Tokenizer:    "cl100k_base",
+				Entries:      entries,
+			}
+			
+			fileName := fmt.Sprintf("%s.cidatkn", startID)
+			fileBytes, _ := json.MarshalIndent(sidecar, "", "    ")
+			os.WriteFile(filepath.Join(pastaComp, "tknd", fileName), fileBytes, 0644)
+		}
 	}
 	return dicionario
 }

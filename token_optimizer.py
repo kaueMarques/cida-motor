@@ -12,6 +12,88 @@ from markdown.phrase_dictionary import (
 )
 from markdown.semantic_validator import validate_semantics
 from markdown.report import ReportGenerator
+from markdown.sidecar import write_sidecar, create_sidecar_data
+
+def optimize_markdown_dictionary_file_scope(content, transformed_text, filepath, verify_semantics):
+    # Base tokens of transformed_text (without dictionary)
+    base_tokens = count_tokens(transformed_text)
+    best_tokens = base_tokens
+    best_minified = transformed_text
+    best_sidecar_data = None
+    
+    pm = ProtectedRegionsManager()
+    protected_text = pm.protect(transformed_text)
+    
+    exclude_set = set(re.findall(r'\b\w+\b', transformed_text))
+    candidate_words = find_candidate_words(protected_text)
+    if not candidate_words:
+        return transformed_text, None, 0
+        
+    from collections import Counter
+    word_counts = Counter(candidate_words)
+    
+    # Sort candidate words by frequency * length to prioritize highest impact
+    sorted_words = sorted(word_counts.items(), key=lambda x: x[1] * len(x[0]), reverse=True)
+    
+    aliases = generate_alias_candidates(exclude_set, limit=len(word_counts) + 10)
+    
+    current_dict = {}
+    entries_list = []
+    
+    alias_idx = 0
+    for word, freq in sorted_words:
+        if freq < 2:
+            continue
+        if alias_idx >= len(aliases):
+            break
+            
+        alias = aliases[alias_idx]
+        
+        # Add word to current dictionary
+        current_dict[word] = alias
+        entries_list.append({"alias": alias, "value": word})
+        alias_idx += 1
+        
+        # Test applying current dictionary
+        candidate_minified = apply_dictionary(transformed_text, current_dict, pm)
+        
+        try:
+            sidecar_data = create_sidecar_data(filepath, content, entries_list)
+        except Exception:
+            # Revert last addition
+            current_dict.pop(word)
+            entries_list.pop()
+            alias_idx -= 1
+            continue
+            
+        if verify_semantics:
+            is_valid, _ = validate_semantics(content, candidate_minified, current_dict)
+            if not is_valid:
+                # Revert last addition
+                current_dict.pop(word)
+                entries_list.pop()
+                alias_idx -= 1
+                continue
+                
+        # Calculate effective cost
+        tokens_min = count_tokens(candidate_minified)
+        tokens_sidecar = count_tokens(json.dumps(sidecar_data, ensure_ascii=False))
+        tokens_instr = count_tokens("Use the companion sidecar file to resolve aliases.")
+        
+        effective_tokens = tokens_min + tokens_sidecar + tokens_instr
+        
+        if effective_tokens < best_tokens:
+            best_tokens = effective_tokens
+            best_minified = candidate_minified
+            best_sidecar_data = sidecar_data
+        else:
+            # Revert last addition
+            current_dict.pop(word)
+            entries_list.pop()
+            alias_idx -= 1
+            
+    final_tokens_dict = count_tokens(json.dumps(best_sidecar_data, ensure_ascii=False)) if best_sidecar_data else 0
+    return best_minified, best_sidecar_data, final_tokens_dict
 
 # Re-use Java/code minifier from motor_v2
 def minificar_codigo_para_ia(codigo_fonte, dicionario=None):
