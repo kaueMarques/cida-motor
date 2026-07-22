@@ -1,1 +1,1 @@
-class App{E name;App(E name){name=name;}E getName(){return name;}static void main(E[]args){App app=new App("CIDA Motor");}}
+class App{B name;App(B name){name=name;}B getName(){return name;}static void main(B[]args){App app=new App("CIDA Motor");}}

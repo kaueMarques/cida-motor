@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 
 def translate(tokens, tknd_dir):
     mapping = {}
@@ -7,12 +8,21 @@ def translate(tokens, tknd_dir):
         return f"Erro: Pasta {tknd_dir} não encontrada."
     
     for file in os.listdir(tknd_dir):
-        if file.endswith(".tknd"):
-            with open(os.path.join(tknd_dir, file), 'r', encoding='utf-8') as f:
-                for line in f:
-                    parts = line.strip().split('=')
-                    if len(parts) == 2:
-                        mapping[parts[0]] = parts[1]
+        if file.endswith(".cidatkn") or file.endswith(".tknd"):
+            try:
+                with open(os.path.join(tknd_dir, file), 'r', encoding='utf-8') as f:
+                    if file.endswith(".cidatkn"):
+                        data = json.load(f)
+                        if isinstance(data, dict) and "entries" in data:
+                            for entry in data["entries"]:
+                                mapping[entry["alias"]] = entry["value"]
+                    else:
+                        for line in f:
+                            parts = line.strip().split('=')
+                            if len(parts) == 2:
+                                mapping[parts[0]] = parts[1]
+            except Exception:
+                pass
     
     results = {}
     for t in tokens:

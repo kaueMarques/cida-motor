@@ -1,6 +1,6 @@
 [
     {
-        "arquivo": "C:\\Users\\KABUM\\IdeaProjects\\cida-motor\\tests\\fixtures\\bmad_project\\App.java",
+        "arquivo": "App.java",
         "perfil": "java",
         "tokens_originais": 117,
         "tokens_baseline": 36,
@@ -9,13 +9,15 @@
         "ganho_percentual_medido": 69.23076923076923,
         "dicionário_incluído": false,
         "tokens_do_dicionario": 0,
-        "transformações_aceitas": [],
+        "transformações_aceitas": [
+            "go_minification"
+        ],
         "transformações_rejeitadas": [],
         "status_semântico": "SUCCESS",
-        "tempo_de_execução": 0.38811469078063965
+        "tempo_de_execução": 0.0
     },
     {
-        "arquivo": "C:\\Users\\KABUM\\IdeaProjects\\cida-motor\\tests\\fixtures\\bmad_project\\step-01.md",
+        "arquivo": "step-01.md",
         "perfil": "bmad",
         "tokens_originais": 70,
         "tokens_baseline": 59,
@@ -33,10 +35,10 @@
             "list_compaction_no_gain"
         ],
         "status_semântico": "UNCHANGED_NO_TOKEN_GAIN",
-        "tempo_de_execução": 0.006049633026123047
+        "tempo_de_execução": 0.0
     },
     {
-        "arquivo": "C:\\Users\\KABUM\\IdeaProjects\\cida-motor\\tests\\fixtures\\bmad_project\\workflow.md",
+        "arquivo": "workflow.md",
         "perfil": "bmad",
         "tokens_originais": 139,
         "tokens_baseline": 76,
@@ -55,6 +57,6 @@
             "list_compaction_no_gain"
         ],
         "status_semântico": "SUCCESS",
-        "tempo_de_execução": 0.003000020980834961
+        "tempo_de_execução": 0.0
     }
 ]

@@ -311,7 +311,11 @@ func processarEComparar(pastaOrig string, pastaComp string, profile string, dict
 	absOrig, _ := filepath.Abs(pastaOrig)
 	absComp, _ := filepath.Abs(pastaComp)
 
-	if _, err := os.Stat(absComp); os.IsNotExist(err) && !dryRun {
+	dirIsEmpty := true
+	if entries, err := os.ReadDir(absComp); err == nil && len(entries) > 0 {
+		dirIsEmpty = false
+	}
+	if _, err := os.Stat(absComp); (os.IsNotExist(err) || dirIsEmpty) && !dryRun {
 		fmt.Printf("📂 Criando pasta de destino: %s\n", absComp)
 		os.MkdirAll(absComp, 0755)
 		os.MkdirAll(filepath.Join(absComp, "tknd"), 0755)
@@ -640,7 +644,12 @@ func construirDicionario(pastaOrig string, pastaComp string) map[string]string {
 	var ss []kv
 	for k, v := range contador { ss = append(ss, kv{k, v}) }
 	sort.Slice(ss, func(i, j int) bool {
-		return ss[i].Freq*len(ss[i].Key) > ss[j].Freq*len(ss[j].Key)
+		scoreI := ss[i].Freq * len(ss[i].Key)
+		scoreJ := ss[j].Freq * len(ss[j].Key)
+		if scoreI == scoreJ {
+			return ss[i].Key < ss[j].Key
+		}
+		return scoreI > scoreJ
 	})
 
 	dicionario := make(map[string]string)
