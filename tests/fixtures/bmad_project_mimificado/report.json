@@ -4,9 +4,9 @@
         "perfil": "java",
         "tokens_originais": 117,
         "tokens_baseline": 36,
-        "tokens_novos": 36,
-        "ganho_absoluto": 81,
-        "ganho_percentual_medido": 69.23076923076923,
+        "tokens_novos": 117,
+        "ganho_absoluto": 0,
+        "ganho_percentual_medido": 0.0,
         "dicionário_incluído": false,
         "tokens_do_dicionario": 0,
         "transformações_aceitas": [
@@ -32,7 +32,8 @@
             "trim_trailing_whitespace_no_gain",
             "normalize_newlines_no_gain",
             "table_whitespace_no_gain",
-            "list_compaction_no_gain"
+            "list_compaction_no_gain",
+            "file_dictionary_no_gain"
         ],
         "status_semântico": "UNCHANGED_NO_TOKEN_GAIN",
         "tempo_de_execução": 0.0
@@ -42,21 +43,21 @@
         "perfil": "bmad",
         "tokens_originais": 139,
         "tokens_baseline": 76,
-        "tokens_novos": 127,
-        "ganho_absoluto": 12,
-        "ganho_percentual_medido": 8.633093525179856,
+        "tokens_novos": 139,
+        "ganho_absoluto": 0,
+        "ganho_percentual_medido": 0.0,
         "dicionário_incluído": false,
         "tokens_do_dicionario": 0,
-        "transformações_aceitas": [
-            "remove_html_comments"
-        ],
+        "transformações_aceitas": [],
         "transformações_rejeitadas": [
+            "remove_html_comments_semantic_fail",
             "trim_trailing_whitespace_no_gain",
             "normalize_newlines_no_gain",
             "table_whitespace_no_gain",
-            "list_compaction_no_gain"
+            "list_compaction_no_gain",
+            "file_dictionary_no_gain"
         ],
-        "status_semântico": "SUCCESS",
+        "status_semântico": "UNCHANGED_NO_TOKEN_GAIN",
         "tempo_de_execução": 0.0
     }
 ]

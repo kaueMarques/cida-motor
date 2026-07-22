@@ -5,6 +5,7 @@ import time
 import json
 import re
 import shutil
+import hashlib
 from markdown.protected_regions import ProtectedRegionsManager
 from markdown.phrase_dictionary import (
     count_tokens, build_file_dictionary, apply_dictionary,
@@ -12,7 +13,7 @@ from markdown.phrase_dictionary import (
 )
 from markdown.semantic_validator import validate_semantics
 from markdown.report import ReportGenerator
-from markdown.sidecar import write_sidecar, create_sidecar_data
+from markdown.sidecar import write_sidecar, create_sidecar_data, validate_sidecar
 
 def optimize_markdown_dictionary_file_scope(content, transformed_text, filepath, verify_semantics):
     # Base tokens of transformed_text (without dictionary)
@@ -38,7 +39,6 @@ def optimize_markdown_dictionary_file_scope(content, transformed_text, filepath,
     aliases = generate_alias_candidates(exclude_set, limit=len(word_counts) + 10)
     
     current_dict = {}
-    entries_list = []
     
     alias_idx = 0
     for word, freq in sorted_words:
@@ -51,18 +51,19 @@ def optimize_markdown_dictionary_file_scope(content, transformed_text, filepath,
         
         # Add word to current dictionary
         current_dict[word] = alias
-        entries_list.append({"alias": alias, "value": word})
         alias_idx += 1
         
         # Test applying current dictionary
         candidate_minified = apply_dictionary(transformed_text, current_dict, pm)
         
+        # Invert dictionary for sidecar
+        entries_dict = {alias: word for word, alias in current_dict.items()}
+        
         try:
-            sidecar_data = create_sidecar_data(filepath, content, entries_list)
+            sidecar_data = create_sidecar_data(filepath, content.encode('utf-8'), entries_dict)
         except Exception:
             # Revert last addition
             current_dict.pop(word)
-            entries_list.pop()
             alias_idx -= 1
             continue
             
@@ -71,13 +72,12 @@ def optimize_markdown_dictionary_file_scope(content, transformed_text, filepath,
             if not is_valid:
                 # Revert last addition
                 current_dict.pop(word)
-                entries_list.pop()
                 alias_idx -= 1
                 continue
                 
         # Calculate effective cost
         tokens_min = count_tokens(candidate_minified)
-        tokens_sidecar = count_tokens(json.dumps(sidecar_data, ensure_ascii=False))
+        tokens_sidecar = count_tokens(json.dumps(sidecar_data, ensure_ascii=False, indent=4))
         tokens_instr = count_tokens("Use the companion sidecar file to resolve aliases.")
         
         effective_tokens = tokens_min + tokens_sidecar + tokens_instr
@@ -89,10 +89,9 @@ def optimize_markdown_dictionary_file_scope(content, transformed_text, filepath,
         else:
             # Revert last addition
             current_dict.pop(word)
-            entries_list.pop()
             alias_idx -= 1
             
-    final_tokens_dict = count_tokens(json.dumps(best_sidecar_data, ensure_ascii=False)) if best_sidecar_data else 0
+    final_tokens_dict = count_tokens(json.dumps(best_sidecar_data, ensure_ascii=False, indent=4)) if best_sidecar_data else 0
     return best_minified, best_sidecar_data, final_tokens_dict
 
 # Re-use Java/code minifier from motor_v2
@@ -244,7 +243,7 @@ def main():
     parser.add_argument("--profile", default="auto", choices=["auto", "code", "java", "markdown", "bmad"], help="Processing profile")
     parser.add_argument("--dictionary-scope", default="file", choices=["none", "file", "corpus"], help="Dictionary scope")
     parser.add_argument("--fail-on-inflation", action="store_true", help="Fail if any file has token count inflation")
-    parser.add_argument("--report", default="text", choices=["text", "json", "both"], help="Report format")
+    parser.add_argument("--report", default="both", choices=["text", "json", "both"], help="Report format")
     parser.add_argument("--report-path", default="report", help="Report output path (without extension)")
     parser.add_argument("--verify-semantics", action="store_true", default=True, help="Run semantic validations")
     parser.add_argument("--dry-run", action="store_true", help="Dry run mode (no files written)")
@@ -305,8 +304,8 @@ def main():
             tokens_orig=orig_tokens,
             tokens_base=base_tokens,
             tokens_new=final_tokens,
-            dict_included=False,
-            tokens_dict=0,
+            dict_included=entry.get("dict_included", False),
+            tokens_dict=entry.get("tokens_dict", 0),
             accepted_transforms=["go_minification"],
             rejected_transforms=[],
             semantic_status="SUCCESS",
@@ -315,6 +314,7 @@ def main():
     
     # 1. Corpus-level dictionary preparation
     corpus_dict = {}
+    corpus_hash = ""
     if args.dictionary_scope == "corpus":
         all_contents = []
         for fp in files_to_process:
@@ -326,18 +326,103 @@ def main():
                     pass
         corpus_dict = build_corpus_dictionary(all_contents)
         
-        if corpus_dict and not args.dry_run:
-            tknd_dir = os.path.join(dst_abs, "tknd")
-            os.makedirs(tknd_dir, exist_ok=True)
+        if corpus_dict:
+            # Build deterministic manifest for corpus
+            manifest_files = []
+            for fp in files_to_process:
+                if not is_binary_file(fp) and (fp.endswith('.md') or fp.endswith('.txt')):
+                    rel = os.path.relpath(fp, src_abs).replace('\\', '/')
+                    try:
+                        with open(fp, 'rb') as f:
+                            file_bytes = f.read()
+                        sha = hashlib.sha256(file_bytes).hexdigest()
+                        manifest_files.append({"path": rel, "sha256": sha})
+                    except:
+                        pass
+            # Sort files by path to ensure determinism
+            manifest_files.sort(key=lambda x: x["path"])
+            manifest = {"files": manifest_files}
+            manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode('utf-8')
+            corpus_hash = hashlib.sha256(manifest_bytes).hexdigest()
+            
+            # Simulate minification to check net gain
+            total_orig_tokens = 0
+            total_mini_tokens = 0
+            for fp in files_to_process:
+                if is_binary_file(fp):
+                    continue
+                try:
+                    with open(fp, 'r', encoding='utf-8', errors='ignore') as f:
+                        c = f.read()
+                except:
+                    continue
+                total_orig_tokens += count_tokens(c)
+                
+                # Apply transforms
+                prof = args.profile
+                if prof == "auto":
+                    prof = detect_profile(fp, c)
+                
+                if prof in ["markdown", "bmad"]:
+                    curr = c
+                    curr = remove_html_comments(curr)
+                    curr = trim_trailing_whitespace(curr)
+                    curr = normalize_newlines(curr)
+                    curr = table_whitespace(curr)
+                    curr = list_compaction(curr)
+                    pm = ProtectedRegionsManager()
+                    cand = apply_dictionary(curr, corpus_dict, pm)
+                    if args.verify_semantics:
+                        is_valid, _ = validate_semantics(c, cand, corpus_dict)
+                        if is_valid and count_tokens(cand) < count_tokens(curr):
+                            curr = cand
+                    total_mini_tokens += count_tokens(curr)
+                else:
+                    mini = minificar_codigo_para_ia(c, corpus_dict)
+                    total_mini_tokens += count_tokens(mini)
+                    
+            # Calculate sidecars token cost
             items = list(corpus_dict.items())
+            sidecar_tokens_total = 0
             for i in range(0, len(items), 500):
                 chunk = items[i:i+500]
-                prefixChars = "ABCDEF"
-                start_id = prefixChars[min(i // 500, len(prefixChars)-1)] + str(i % 500)
-                dict_file_path = os.path.join(tknd_dir, f"{start_id}.tknd")
-                with open(dict_file_path, 'w', encoding='utf-8') as df:
-                    for word, alias in chunk:
-                        df.write(f"{alias}={word}\n")
+                entries_map = {alias: word for word, alias in chunk}
+                sidecar_data = {
+                    "format": "cida-token-sidecar",
+                    "version": 1,
+                    "source": "corpus",
+                    "source_sha256": corpus_hash,
+                    "entries": entries_map
+                }
+                sidecar_tokens_total += count_tokens(json.dumps(sidecar_data, ensure_ascii=False, indent=4))
+                
+            auxiliary_tokens = count_tokens("Use the companion sidecar file to resolve aliases.")
+            net_savings = (total_orig_tokens - total_mini_tokens) - (sidecar_tokens_total + auxiliary_tokens)
+            
+            if net_savings <= 0:
+                # Revert: no corpus dictionary used
+                corpus_dict = {}
+                corpus_hash = ""
+            else:
+                # Write sidecars if not dry-run
+                if not args.dry_run:
+                    tknd_dir = os.path.join(dst_abs, "tknd")
+                    os.makedirs(tknd_dir, exist_ok=True)
+                    for i in range(0, len(items), 500):
+                        chunk = items[i:i+500]
+                        prefixChars = "ABCDEF"
+                        start_id = prefixChars[min(i // 500, len(prefixChars)-1)] + str(i % 500)
+                        entries_map = {alias: word for word, alias in chunk}
+                        sidecar_data = {
+                            "format": "cida-token-sidecar",
+                            "version": 1,
+                            "source": "corpus",
+                            "source_sha256": corpus_hash,
+                            "entries": entries_map
+                        }
+                        dict_file_path = os.path.join(tknd_dir, f"{start_id}.cidatkn")
+                        with open(dict_file_path, 'w', encoding='utf-8') as df:
+                            json.dump(sidecar_data, df, indent=4, ensure_ascii=False)
 
     # 2. Process each file
     inflation_detected = False
@@ -387,6 +472,10 @@ def main():
         accepted_transforms = []
         rejected_transforms = []
         
+        dict_included = False
+        tokens_dict = 0
+        best_sidecar_data = None
+        
         if profile in ["markdown", "bmad"]:
             current_text = content
             
@@ -417,31 +506,20 @@ def main():
                     rejected_transforms.append(f"{name}_no_gain")
             
             # Apply Dictionary
-            header_dict = ""
-            dict_included = False
-            tokens_dict = 0
-            
             if args.dictionary_scope == "file":
-                pm = ProtectedRegionsManager()
-                file_dict, header_dict = build_file_dictionary(current_text, pm)
-                if file_dict:
-                    candidate_text = header_dict + apply_dictionary(current_text, file_dict, pm)
+                rel_path = os.path.relpath(filepath, src_abs) if os.path.isdir(src_abs) else os.path.basename(filepath)
+                candidate_text, sidecar_data, dict_tokens = optimize_markdown_dictionary_file_scope(
+                    content, current_text, rel_path, args.verify_semantics
+                )
+                if sidecar_data:
+                    current_text = candidate_text
+                    dict_included = True
+                    tokens_dict = dict_tokens
+                    best_sidecar_data = sidecar_data
+                    accepted_transforms.append("file_dictionary")
+                else:
+                    rejected_transforms.append("file_dictionary_no_gain")
                     
-                    if args.verify_semantics:
-                        is_valid, _ = validate_semantics(content, candidate_text, file_dict)
-                        if is_valid:
-                            cand_tokens = count_tokens(candidate_text)
-                            curr_tokens = count_tokens(current_text)
-                            if cand_tokens < curr_tokens:
-                                current_text = candidate_text
-                                dict_included = True
-                                tokens_dict = count_tokens(header_dict)
-                                accepted_transforms.append("file_dictionary")
-                            else:
-                                rejected_transforms.append("file_dictionary_no_gain")
-                        else:
-                            rejected_transforms.append("file_dictionary_semantic_fail")
-                            
             elif args.dictionary_scope == "corpus" and corpus_dict:
                 pm = ProtectedRegionsManager()
                 candidate_text = apply_dictionary(current_text, corpus_dict, pm)
@@ -464,9 +542,13 @@ def main():
             final_text = current_text
             final_tokens = count_tokens(final_text)
             
+            # Revert if no gain
             if final_tokens >= orig_tokens:
                 final_text = content
                 final_tokens = orig_tokens
+                dict_included = False
+                tokens_dict = 0
+                best_sidecar_data = None
                 semantic_status = "UNCHANGED_NO_TOKEN_GAIN"
             else:
                 semantic_status = "SUCCESS"
@@ -496,6 +578,10 @@ def main():
             with open(dest_path, 'w', encoding='utf-8') as f:
                 f.write(final_text)
                 
+            if dict_included and best_sidecar_data is not None:
+                sidecar_path = dest_path + ".cidatkn"
+                write_sidecar(sidecar_path, best_sidecar_data)
+                
         report_gen.add_entry(
             filepath=filepath,
             profile=profile,
@@ -512,12 +598,11 @@ def main():
         
     # Save reports
     report_name = args.report_path
-    if args.report in ["text", "both", "json"]:
-        report_gen.save_reports(report_name + ".md", report_name + ".json", src_abs)
-        
-    print("\nBenchmark reports saved:")
-    print(f"  Markdown: {report_name}.md")
-    print(f"  JSON:     {report_name}.json")
+    if not args.dry_run and args.report in ["text", "both", "json"]:
+        report_gen.save_reports(report_name + ".md", report_name + ".json", src_abs, args.report)
+        print("\nBenchmark reports saved:")
+        print(f"  Markdown: {report_name}.md")
+        print(f"  JSON:     {report_name}.json")
     
     if args.fail_on_inflation and inflation_detected:
         print("Error: Inflation detected during token optimization.")

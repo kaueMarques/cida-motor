@@ -90,37 +90,50 @@ def main():
         sys.exit(1)
 
     # 5. Compare Run 1 vs Run 2 Outputs (Strict Determinism Verification)
-    print("\nVerifying outputs determinism...")
-    files_1 = []
-    for root, _, files in os.walk(output_dir_1):
-        for f in files:
-            rel = os.path.relpath(os.path.join(root, f), output_dir_1)
-            files_1.append(rel)
-            
-    files_2 = []
-    for root, _, files in os.walk(output_dir_2):
-        for f in files:
-            rel = os.path.relpath(os.path.join(root, f), output_dir_2)
-            files_2.append(rel)
-            
-    if sorted(files_1) != sorted(files_2):
-        print(f"Error: Outputs files set mismatch.\nRun 1: {files_1}\nRun 2: {files_2}")
+    print("\nVerifying outputs determinism using Tree Manifests...")
+    
+    def generate_tree_manifest(output_dir):
+        files_info = []
+        for root, _, files in os.walk(output_dir):
+            for f in files:
+                filepath = os.path.join(root, f)
+                rel_path = os.path.relpath(filepath, output_dir).replace('\\', '/')
+                sha = calculate_file_sha256(filepath)
+                size = os.path.getsize(filepath)
+                files_info.append({
+                    "path": rel_path,
+                    "sha256": sha,
+                    "size": size
+                })
+        # Sort deterministically
+        files_info.sort(key=lambda x: x["path"])
+        manifest = {"files": files_info}
+        manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode('utf-8')
+        tree_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+        manifest["tree_sha256"] = tree_sha256
+        return manifest, tree_sha256
+
+    manifest_1, hash_1 = generate_tree_manifest(output_dir_1)
+    manifest_2, hash_2 = generate_tree_manifest(output_dir_2)
+    
+    print(f"Run 1 Tree SHA256: {hash_1}")
+    print(f"Run 2 Tree SHA256: {hash_2}")
+    
+    if hash_1 != hash_2:
+        print("Error: Determinism violation. Tree SHA256 hashes do not match.")
+        print(f"Run 1 files: {manifest_1['files']}")
+        print(f"Run 2 files: {manifest_2['files']}")
         sys.exit(1)
         
-    for rel_path in files_1:
-        if "report_local" in rel_path:
-            continue
-        f1 = os.path.join(output_dir_1, rel_path)
-        f2 = os.path.join(output_dir_2, rel_path)
-        
-        h1 = calculate_file_sha256(f1)
-        h2 = calculate_file_sha256(f2)
-        
-        if h1 != h2:
-            print(f"Error: Determinism violation in file {rel_path}.\nRun 1 SHA256: {h1}\nRun 2 SHA256: {h2}")
-            sys.exit(1)
-            
-    print("[OK] Output binary determinism verified (all minified files and sidecars match exactly).")
+    print("[OK] Output binary determinism verified (Both runs generated identical Tree SHA256).")
+
+    # Save manifest.json inside final output directory
+    manifest_json_path = os.path.join(output_dir_1, "manifest.json")
+    with open(manifest_json_path, 'w', encoding='utf-8') as mf:
+        json.dump(manifest_1, mf, indent=4, ensure_ascii=False)
+    
+    # Update files set for copy operation
+    files_1 = [f["path"] for f in manifest_1["files"]]
 
     # 6. Verify variable data absence in versioned report.json
     report_json_path = os.path.join(output_dir_1, "report.json")

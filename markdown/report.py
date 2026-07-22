@@ -51,28 +51,32 @@ class ReportGenerator:
             md.append(f"| {name} | {e['perfil']} | {e['tokens_originais']} | {e['tokens_baseline']} | {e['tokens_novos']} | {e['ganho_absoluto']} | {e['ganho_percentual_medido']:.2f}% | {'Sim' if e['dicionário_incluído'] else 'Não'} | {e['tokens_do_dicionario']} | {e['status_semântico']} | {tempo:.4f} |")
         return "\n".join(md)
 
-    def save_reports(self, text_path, json_path, src_abs):
-        os.makedirs(os.path.dirname(os.path.abspath(text_path)), exist_ok=True)
-        os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
-        
-        # Save local reports first (with timing and absolute/basename paths)
-        local_text_path = text_path.replace(".md", "_local.md")
-        local_json_path = json_path.replace(".json", "_local.json")
-        
-        local_md = self.generate_markdown(deterministic=False)
-        with open(local_text_path, 'w', encoding='utf-8') as f:
-            f.write(local_md)
-        with open(local_json_path, 'w', encoding='utf-8') as f:
-            json.dump(self.entries, f, indent=4, ensure_ascii=False)
-            
-        # Make the entries list deterministic (relative paths, zeroed timing)
+    def save_reports(self, text_path, json_path, src_abs, report_format="both"):
+        import re
         self.make_deterministic(src_abs)
         
-        # Save deterministic reports (versioned)
+        # Regex check for absolute path leakage
+        abs_patterns = [r'[A-Za-z]:[\\/]', r'/home/', r'/Users/']
+        
+        for e in self.entries:
+            path = e["arquivo"]
+            for pat in abs_patterns:
+                if re.search(pat, path):
+                    raise ValueError(f"Absolute path found in report entry: {path}")
+                    
         md_content = self.generate_markdown(deterministic=True)
-        with open(text_path, 'w', encoding='utf-8') as f:
-            f.write(md_content)
-            
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(self.entries, f, indent=4, ensure_ascii=False)
+        for pat in abs_patterns:
+            if re.search(pat, md_content):
+                raise ValueError("Absolute path found in generated markdown report")
+                
+        # Write only requested report formats
+        if report_format in ["text", "both"]:
+            os.makedirs(os.path.dirname(os.path.abspath(text_path)), exist_ok=True)
+            with open(text_path, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+                
+        if report_format in ["json", "both"]:
+            os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(self.entries, f, indent=4, ensure_ascii=False)
 

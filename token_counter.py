@@ -1,18 +1,17 @@
 import sys
 import os
-import tiktoken
 
-# Force using the offline cache in resources
+# Ensure project root is in path to import markdown module
 dir_path = os.path.dirname(os.path.abspath(__file__))
-os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(dir_path, "resources")
+sys.path.insert(0, dir_path)
 
-def count_tokens(text):
-    try:
-        enc = tiktoken.get_encoding("cl100k_base")
-        return len(enc.encode(text))
-    except Exception:
-        return 0
+from markdown.phrase_dictionary import get_encoder
 
 if __name__ == "__main__":
-    text = sys.stdin.read()
-    print(count_tokens(text))
+    try:
+        enc = get_encoder()
+        text = sys.stdin.read()
+        print(len(enc.encode(text)))
+    except Exception as e:
+        print(f"Error in token_counter: {e}", file=sys.stderr)
+        sys.exit(2)

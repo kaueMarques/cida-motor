@@ -1,7 +1,34 @@
 import re
 import string
 import sys
+import os
+import hashlib
 import tiktoken
+
+class TokenizerError(Exception):
+    pass
+
+def verify_tokenizer_cache():
+    cache_dir = os.environ.get("TIKTOKEN_CACHE_DIR")
+    if not cache_dir:
+        raise TokenizerError("TIKTOKEN_CACHE_DIR environment variable is not set")
+    if not os.path.exists(cache_dir):
+        raise TokenizerError(f"Tokenizer cache directory does not exist: {cache_dir}")
+        
+    expected_file = os.path.join(cache_dir, "9b5ad71b2ce5302211f9c61530b329a4922fc6a4")
+    if not os.path.exists(expected_file):
+        raise TokenizerError(f"Required tokenizer cache file is missing: {expected_file}")
+        
+    file_size = os.path.getsize(expected_file)
+    if file_size != 1681126:
+        raise TokenizerError(f"Tokenizer cache file is corrupted (invalid size: {file_size})")
+        
+    h = hashlib.sha1()
+    with open(expected_file, 'rb') as f:
+        h.update(f.read())
+    file_hash = h.hexdigest()
+    if file_hash not in ["9b5ad71b2ce5302211f9c61530b329a4922fc6a4", "6494e42d5aad2bbb441ea9793af9e7db335c8d9c"]:
+        raise TokenizerError(f"Tokenizer cache file hash mismatch (got {file_hash}, expected 9b5ad71b2ce5302211f9c61530b329a4922fc6a4 or 6494e42d5aad2bbb441ea9793af9e7db335c8d9c)")
 
 _enc = None
 
@@ -9,11 +36,14 @@ def get_encoder():
     global _enc
     if _enc is None:
         try:
-            # Assumes TIKTOKEN_CACHE_DIR is set to point to the local cache folder
+            verify_tokenizer_cache()
             _enc = tiktoken.get_encoding("cl100k_base")
+        except TokenizerError as te:
+            print(f"Error: Tokenizer dependency error: {te}", file=sys.stderr)
+            sys.exit(2)
         except Exception as e:
-            print(f"Error: Tokenizer is unavailable/offline: {e}", file=sys.stderr)
-            sys.exit(5)
+            print(f"Error: Unexpected tokenizer failure: {e}", file=sys.stderr)
+            sys.exit(2)
     return _enc
 
 def count_tokens(text):

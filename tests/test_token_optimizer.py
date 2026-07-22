@@ -310,7 +310,7 @@ class TestCLIOptions(unittest.TestCase):
     def test_parse_yaml_frontmatter(self):
         fm_str = "---\nstepsCompleted: [0, 1]\nworkflowType: dev\n---"
         parsed = parse_yaml_frontmatter(fm_str)
-        self.assertEqual(parsed["stepsCompleted"], "[0, 1]")
+        self.assertEqual(parsed["stepsCompleted"], [0, 1])
         self.assertEqual(parsed["workflowType"], "dev")
 
     def test_is_binary_file_with_non_binary(self):
