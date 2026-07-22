@@ -81,7 +81,7 @@ def main():
         start_time = time.time()
         res_1 = subprocess.run(cmd_1, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         if res_1.returncode != 0:
-            print(f"Run 1 failed:\n{res_1.stderr}")
+            sys.stderr.buffer.write(f"Run 1 failed:\n{res_1.stderr}\n".encode("utf-8"))
             sys.exit(1)
 
         # 4. Execution - RUN 2
@@ -90,7 +90,7 @@ def main():
         start_time = time.time()
         res_2 = subprocess.run(cmd_2, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         if res_2.returncode != 0:
-            print(f"Run 2 failed:\n{res_2.stderr}")
+            sys.stderr.buffer.write(f"Run 2 failed:\n{res_2.stderr}\n".encode("utf-8"))
             sys.exit(1)
 
         # 5. Compare Run 1 vs Run 2 Outputs (Strict Determinism Verification)
