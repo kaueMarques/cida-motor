@@ -49,6 +49,9 @@ jobs:
     - name: Run Python tests
       run: python -m pytest -q
 
+    - name: Clean Workspace Gate
+      run: python scripts/check_clean_workspace.py
+
   benchmark:
     name: Benchmark on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -77,6 +80,9 @@ jobs:
 
     - name: Run Benchmarks and Generate Manifest
       run: python benchmarks/benchmark_runner.py --manifest-out manifest-${{ matrix.os }}.json
+
+    - name: Clean Workspace Gate
+      run: python scripts/check_clean_workspace.py
 
     - name: Upload Manifest Artifact
       uses: actions/upload-artifact@v4
