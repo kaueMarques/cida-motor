@@ -23,7 +23,7 @@ def classify_comment(comment_text: str) -> str:
             import json
             json.loads(content)
             return "operational"
-        except:
+        except ValueError:
             pass
     if re.search(r'^\w+\s*[:=]\s*', content):
         return "operational"
