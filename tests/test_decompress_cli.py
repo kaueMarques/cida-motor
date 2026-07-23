@@ -62,13 +62,15 @@ def test_decompress_file_usecase_edge_cases(tmp_path):
 
     # Source missing
     with pytest.raises(SourcePathError):
-        usecase.decompress_file(str(tmp_path / "missing.md"))
+        usecase.decompress(str(tmp_path / "missing.md"))
 
-    # Sidecar missing
+
+    # Sidecar missing returns raw content
     src = tmp_path / "doc.md"
     src.write_text("hello")
-    with pytest.raises(SourcePathError):
-        usecase.decompress_file(str(src))
+    assert usecase.decompress(str(src)) == b"hello"
+
+
 
     # Sha mismatch error
     sidecar_file = tmp_path / "doc.md.cidatkn"
@@ -80,5 +82,7 @@ def test_decompress_file_usecase_edge_cases(tmp_path):
         "entries": {"AA": "val"}
     }
     sidecar_file.write_text(jc.encode(sidecar_data, indent=4))
-    with pytest.raises(ReconstructionError, match="Reconstructed content SHA-256 digest mismatch"):
-        usecase.decompress_file(str(src))
+    with pytest.raises(ReconstructionError, match="Reconstructed SHA256 mismatch"):
+
+        usecase.decompress(str(src))
+
