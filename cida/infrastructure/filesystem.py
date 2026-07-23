@@ -19,8 +19,9 @@ class PhysicalFilesystem:
 
     def write_text(self, filepath: str, content: str, encoding: str = "utf-8") -> None:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-        with open(filepath, 'w', encoding=encoding, newline='') as f:
-            f.write(content)
+        content_lf = content.replace('\r\n', '\n')
+        with open(filepath, 'w', encoding=encoding, newline='\n') as f:
+            f.write(content_lf)
 
     def write_bytes(self, filepath: str, content: bytes) -> None:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
