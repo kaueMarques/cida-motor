@@ -67,6 +67,7 @@ class FileOptimizerUsecase:
         current_dict = {}
         alias_idx = 0
 
+        # First pass: collect words with individual token savings
         for word, freq in sorted_words:
             if freq < 2:
                 continue
@@ -74,24 +75,33 @@ class FileOptimizerUsecase:
                 break
 
             alias = aliases[alias_idx]
-            current_dict[word] = alias
-            alias_idx += 1
+            tokens_word = self.token_counter.count(word)
+            tokens_alias = self.token_counter.count(alias)
+            if freq * (tokens_word - tokens_alias) > 0:
+                current_dict[word] = alias
+                alias_idx += 1
 
-            candidate_minified = apply_dictionary(transformed_text, current_dict, pm)
-            entries_dict = {alias: word for word, alias in current_dict.items()}
+        if not current_dict:
+            return transformed_text, None, 0
+
+        words_to_eval = list(current_dict.items())
+        working_dict = {}
+
+        for word, alias in words_to_eval:
+            working_dict[word] = alias
+            candidate_minified = apply_dictionary(transformed_text, working_dict, pm)
+            entries_dict = {a: w for w, a in working_dict.items()}
 
             try:
                 sidecar_data = create_sidecar_data(filepath, content.encode('utf-8'), entries_dict, self.hash_service)
             except Exception:
-                current_dict.pop(word)
-                alias_idx -= 1
+                working_dict.pop(word)
                 continue
 
             if verify_semantics:
-                is_valid, _ = validate_semantics(content, candidate_minified, current_dict)
+                is_valid, _ = validate_semantics(content, candidate_minified, working_dict)
                 if not is_valid:
-                    current_dict.pop(word)
-                    alias_idx -= 1
+                    working_dict.pop(word)
                     continue
 
             tokens_min = self.token_counter.count(candidate_minified)
@@ -104,9 +114,7 @@ class FileOptimizerUsecase:
                 best_tokens = effective_tokens
                 best_minified = candidate_minified
                 best_sidecar_data = sidecar_data
-            else:
-                current_dict.pop(word)
-                alias_idx -= 1
 
         final_tokens_dict = self.token_counter.count(self.json_codec.encode(best_sidecar_data, indent=4)) if best_sidecar_data else 0
         return best_minified, best_sidecar_data, final_tokens_dict
+

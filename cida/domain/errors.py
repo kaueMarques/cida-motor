@@ -22,6 +22,11 @@ class SidecarValidationError(CidaError, ValueError):
     """Raised when sidecar schema or integrity checks fail."""
     exit_code = 5
 
+class ReconstructionError(CidaError):
+    """Raised when decompression or content reconstruction fails."""
+    exit_code = 5
+
 class InternalProcessingError(CidaError):
     """Raised for unexpected processing errors or file-specific errors."""
     exit_code = 6
+
