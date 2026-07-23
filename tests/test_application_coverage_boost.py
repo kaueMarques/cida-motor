@@ -92,8 +92,10 @@ def test_generate_report_formatting(tmp_path):
     jc = JsonCodec()
 
     gen = ReportGeneratorUsecase(fs, jc)
+    file1 = tmp_path / "file1.md"
+    file1.write_text("hello")
     gen.add_entry(
-        filepath="file1.md",
+        filepath=str(file1),
         profile="markdown",
         tokens_orig=100,
         tokens_base=90,
