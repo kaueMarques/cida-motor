@@ -403,16 +403,20 @@ def main():
 
             if args.verify_semantics and profile in ["markdown", "bmad"]:
                 validation_dict = {}
-
                 if dict_included:
                     if best_sidecar_data:
                         validation_dict = {v: k for k, v in best_sidecar_data["entries"].items()}
                     elif corpus_dict:
                         validation_dict = corpus_dict
-                is_valid, msg = validate_semantics(content, final_text, validation_dict)
+                try:
+                    is_valid, msg = validate_semantics(content, final_text, validation_dict)
+                except Exception as ve:
+                    is_valid = False
+                    msg = str(ve)
                 if not is_valid:
                     print(f"Semantic validation failed for {filepath}: {msg}", file=sys.stderr)
                     sys.exit(3)
+
 
             if final_tokens > orig_tokens:
                 inflation_detected = True
