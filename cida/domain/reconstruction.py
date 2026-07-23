@@ -27,7 +27,10 @@ def reconstruct_content(compressed_text: str, sidecar_data: dict) -> str:
     sorted_entries = sorted(entries.items(), key=lambda item: len(item[0]), reverse=True)
 
     for alias, original_word in sorted_entries:
-        pattern = re.compile(rf'\b{re.escape(alias)}\b')
+        escaped_alias = re.escape(alias)
+        left_b = r'\b' if re.match(r'^\w', alias) else r'(?<!\w)'
+        right_b = r'\b' if re.search(r'\w$', alias) else r'(?!\w)'
+        pattern = re.compile(f'{left_b}{escaped_alias}{right_b}')
         text = pattern.sub(original_word, text)
 
     return text

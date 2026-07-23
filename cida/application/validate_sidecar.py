@@ -21,7 +21,7 @@ class SidecarValidatorUsecase:
                     if data.get("source") != "corpus":
                         orig_file_path = self.file_repo.join(src_abs, data["source"])
                         if self.file_repo.exists(orig_file_path):
-                            orig_bytes = self.file_repo.read_text(orig_file_path).encode('utf-8')
+                            orig_bytes = self.file_repo.read_bytes(orig_file_path)
                             validate_sidecar(data, data["source"], orig_bytes, self.hash_service)
                 except Exception as e:
                     if isinstance(e, SidecarValidationError):

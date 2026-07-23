@@ -84,7 +84,11 @@ def validate_sidecar(data: dict, expected_rel_path: str, original_bytes: bytes, 
     if sha.lower() != calculated_sha.lower():
         raise SidecarValidationError(f"SHA-256 mismatch: calculated '{calculated_sha}', got '{sha}'")
 
-    original_text = original_bytes.decode('utf-8', errors='ignore')
+    try:
+        original_text = original_bytes.decode('utf-8')
+    except UnicodeDecodeError as e:
+        from cida.domain.errors import EncodingValidationError
+        raise EncodingValidationError(f"Invalid UTF-8 content in original file: {e}") from e
     original_words = set(re.findall(r'\b\w+\b', original_text))
     for alias in data["entries"].keys():
         if alias in original_words:
