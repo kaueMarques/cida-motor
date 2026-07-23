@@ -1,4 +1,3 @@
-import os
 import sys
 import pytest
 from unittest.mock import patch
@@ -10,8 +9,8 @@ from cida.infrastructure.json_codec import JsonCodec
 from cida.domain.errors import SourcePathError, ReconstructionError
 
 def test_decompress_cli_main_success(tmp_path):
-    fs = PhysicalFilesystem()
     hs = HashService()
+
     jc = JsonCodec()
 
     src_file = tmp_path / "compressed.md"

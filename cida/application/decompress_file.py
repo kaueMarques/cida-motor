@@ -1,4 +1,4 @@
-import os
+from typing import Optional
 from cida.domain.errors import SidecarValidationError, ReconstructionError, SourcePathError
 from cida.domain.reconstruction import reconstruct_content
 from cida.domain.sidecar import validate_sidecar_schema
@@ -9,7 +9,8 @@ class FileDecompressorUsecase:
         self.json_codec = json_codec
         self.hash_service = hash_service
 
-    def decompress(self, compressed_filepath: str, sidecar_filepath: str = None) -> bytes:
+    def decompress(self, compressed_filepath: str, sidecar_filepath: Optional[str] = None) -> bytes:
+
         if not self.file_repo.exists(compressed_filepath):
             raise SourcePathError(f"Compressed file not found: {compressed_filepath}")
 
@@ -43,7 +44,7 @@ class FileDecompressorUsecase:
 
         return reconstructed_bytes
 
-    def decompress_to_file(self, compressed_filepath: str, output_filepath: str, sidecar_filepath: str = None) -> bytes:
+    def decompress_to_file(self, compressed_filepath: str, output_filepath: str, sidecar_filepath: Optional[str] = None) -> bytes:
         reconstructed_bytes = self.decompress(compressed_filepath, sidecar_filepath)
         self.file_repo.write_bytes(output_filepath, reconstructed_bytes)
         return reconstructed_bytes

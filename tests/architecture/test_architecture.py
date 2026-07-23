@@ -1,7 +1,6 @@
-import os
 import ast
-import pytest
 from pathlib import Path
+
 
 class ArchitectureVisitor(ast.NodeVisitor):
     def __init__(self, filename):
@@ -175,4 +174,5 @@ def test_import_graph_cycle_detection():
         if visited.get(node, 0) == 0:
             dfs(node)
 
-    assert not cycles, f"Import cycles detected in cida package:\n" + "\n".join(cycles)
+    assert not cycles, "Import cycles detected in cida package:\n" + "\n".join(cycles)
+

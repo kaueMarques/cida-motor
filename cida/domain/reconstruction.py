@@ -1,5 +1,6 @@
 import re
-from cida.domain.errors import SidecarValidationError, ReconstructionError
+from cida.domain.errors import SidecarValidationError
+
 from cida.domain.sidecar import validate_sidecar_schema
 
 def reconstruct_content(compressed_text: str, sidecar_data: dict) -> str:

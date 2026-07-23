@@ -1,6 +1,7 @@
 import sys
 import argparse
-from cida.domain.errors import CidaError, SourcePathError
+from cida.domain.errors import CidaError
+
 from cida.infrastructure.filesystem import PhysicalFilesystem
 from cida.infrastructure.hashing import HashService
 from cida.infrastructure.json_codec import JsonCodec
