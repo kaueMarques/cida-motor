@@ -8,3 +8,6 @@
 *.gif binary
 *.exe binary
 motor_v3 binary
+
+# Preserve exact raw bytes for lossless CRLF fixture
+tests/fixtures/lossless/crlf.md binary

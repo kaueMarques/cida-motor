@@ -13,4 +13,10 @@ report.md
 report_local.json
 report_local.md
 manifest-*.json
+.coverage
+coverage.json
+htmlcov/
+.coverage.*
+Microsoft/
+
 
