@@ -5,7 +5,6 @@ import glob
 from cida.infrastructure.filesystem import PhysicalFilesystem
 from cida.infrastructure.tokenizer import OfflineTokenizer
 from cida.infrastructure.hashing import HashService
-from cida.infrastructure.json_codec import JsonCodec
 from cida.markdown.dictionary import apply_dictionary, build_file_dictionary
 from cida.markdown.protected_regions import ProtectedRegionsManager
 from cida.markdown.semantic_equivalence import validate_semantics
@@ -47,7 +46,6 @@ def test_real_corpus_lossless_roundtrip():
     fs = PhysicalFilesystem()
     tok = OfflineTokenizer()
     hs = HashService()
-    jc = JsonCodec()
 
     # Find real Markdown files in the repository corpus
     real_files = glob.glob("tests/fixtures/bmad_project/*.md") + glob.glob("specs/**/*.md", recursive=True) + glob.glob("*.md")

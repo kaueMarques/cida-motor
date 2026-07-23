@@ -3,9 +3,8 @@ import pytest
 from cida.markdown.dictionary import (
     generate_alias_candidates, find_candidate_words, build_file_dictionary, build_corpus_dictionary, apply_dictionary
 )
-from cida.markdown.parser import parse_markdown, Block
-from cida.markdown.semantic_equivalence import validate_semantics, parse_yaml_frontmatter_safe
-from cida.domain.errors import SemanticValidationError
+from cida.markdown.parser import parse_markdown
+from cida.markdown.semantic_equivalence import validate_semantics
 from cida.markdown.protected_regions import ProtectedRegionsManager
 from cida.infrastructure.tokenizer import OfflineTokenizer
 

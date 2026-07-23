@@ -1,7 +1,6 @@
 import pytest
-from cida.domain.errors import SidecarValidationError, CidaError
+from cida.domain.errors import SidecarValidationError
 from cida.domain.sidecar import create_sidecar_data, validate_sidecar_schema, validate_sidecar
-from cida.domain.policies import classify_comment, normalize_path, is_binary_extension
 from cida.infrastructure.hashing import HashService
 
 def test_sidecar_create_errors():

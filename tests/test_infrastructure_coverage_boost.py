@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from cida.domain.errors import TokenizerError, SemanticValidationError
 from cida.infrastructure.yaml_codec import YamlCodec
 from cida.infrastructure.tokenizer import OfflineTokenizer

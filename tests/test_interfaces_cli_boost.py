@@ -1,8 +1,8 @@
 import os
 import sys
 import pytest
-from unittest.mock import patch, MagicMock
-from cida.domain.errors import SourcePathError, TokenizerError
+from unittest.mock import patch
+from cida.domain.errors import TokenizerError
 from cida.interfaces.cli import counter_main, translate_main, main
 
 @pytest.fixture(autouse=True)

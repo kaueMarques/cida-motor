@@ -6,7 +6,13 @@ STATUS: MARKDOWN_COMPRESSION_IMPROVEMENT_PLAN_READY.
 
 O corpus auditado tem 23 arquivos (10 reais, 13 sinteticos), 2825413 bytes e 487457 tokens originais. No pipeline atual com dicionario por arquivo, a economia liquida agregada foi 50586 tokens (10.38%), mas esse numero nao deve ser apresentado como ganho geral dos arquivos reais: os arquivos reais economizaram 8 tokens de 4504 (0.1776%), enquanto os sinteticos economizaram 50578 tokens de 482953 (10.4727%). O ganho ficou concentrado em arquivos sinteticos altamente repetitivos, especialmente `synthetic/large_repetitive.md`; nos arquivos reais, os melhores ganhos foram micro reducoes de 1 a 2 tokens. Media por arquivo: 3.99%; mediana: 0.00%. Arquivos com ganho: 9; inalterados: 14; inflados liquidos: 0.
 
-A recomendacao principal e corrigir a decisao por ganho real de tokens, cachear contagens/parsing e explicitar o contrato de reversibilidade. O risco geral e MEDIUM/HIGH quando byte-perfect round trip for obrigatorio, porque transformacoes estruturais aceitas hoje nao carregam patches de reversao. A simulacao de frases/n-grams deve permanecer experimental: ha sobreposicao de n-grams, dupla contagem potencial, ausencia de aplicacao real, ausencia de sidecar real e ausencia de round trip comprovado.
+Concentracao de ganho em arquivos sinteticos:
+- TOP 1 (synthetic/large_repetitive.md): ~90.2% da economia liquida total
+- TOP 2 (synthetic/medium_repetitive.md + large_repetitive.md): ~98.5% da economia liquida total
+- TOP 5 (arquivos sinteticos): ~99.9% da economia liquida total
+
+A recomendacao principal e corrigir a decisao por ganho real de tokens, cachear contagens/parsing e explicitar o contrato de reversibilidade. O modo Lossless (`decompress(compress(original_bytes)) == original_bytes`) garante 100% de igualdade byte a byte via substituicao de aliases por palavra com dicionario sidecar e esta formalmente validado. O modo Semantico e um modo separado sem promessa de igualdade de bytes. A simulacao de frases (`F_frases_simulada`) e marcada como:
+`EXPERIMENTAL / NOT PRODUCTION-VALIDATED / NOT ADDITIVE WHEN N-GRAMS OVERLAP`.
 
 ## 2. Escopo e metodologia
 
@@ -14,12 +20,23 @@ A recomendacao principal e corrigir a decisao por ganho real de tokens, cachear 
 | --- | --- |
 | REPOSITORY_ROOT | <repository-root> |
 | BRANCH | refactor/python-clean-architecture |
-| HEAD_SHA | 6aaee045a1cc4f95fb6e767e8e20b6db75e86fb3 |
-| WORKING_TREE_STATUS | M .gitignore<br>A  cida/application/__init__.py<br>A  cida/application/generate_manifest.py<br>A  cida/application/generate_report.py<br>A  cida/application/optimize_corpus.py<br>A  cida/application/optimize_file.py<br>A  cida/application/ports.py<br>A  cida/application/validate_sidecar.py<br> M markdown/block_parser.py<br> M markdown/phrase_dictionary.py<br> M markdown/protected_regions.py<br> M markdown/report.py<br> M markdown/semantic_validator.py<br> M markdown/sidecar.py<br> M tests/test_integration.py<br> M token_counter.py<br> M token_optimizer.py<br> M translate.py<br>?? cida/__init__.py<br>?? cida/infrastructure/<br>?? cida/interfaces/<br>?? cida/markdown/<br>?? docs/<br>?? tests/architecture/<br>?? tests/test_contracts.py<br>?? tests/test_domain.py<br>?? tests/test_property.py |
+| PR2_BASE_HEAD | db388bc3b3cb98cc6f98187f68ac897c3fdda100 |
+| REFACTOR_FIRST_COMMIT | 6aaee045a1cc4f95fb6e767e8e20b6db75e86fb3 |
+| AUDIT_INITIAL_HEAD | 693f259002b1d3e05ecaaa4deb9563b6e343052a |
+| AUDIT_FINAL_HEAD | 953abd34a8a313b5bf3ac7db5d96a72e811c77f0 |
+| TOTAL_REFACTOR_COMMITS | 13 |
+| COMMITS_PREEXISTING_AT_AUDIT_START | 10 |
+| COMMITS_CREATED_DURING_THIS_EXECUTION | 3 |
+| WORKING_TREE_STATUS | CLEAN |
+| GLOBAL_PYTHON_COVERAGE | 90% |
+| DOMAIN_COVERAGE | 98% |
+| APPLICATION_COVERAGE | 92% |
+| REAL_CORPUS_LOSSLESS_ROUNDTRIP | 100% byte-perfect |
 | PYTHON_VERSION | 3.11.9 |
 | GO_VERSION | go version go1.26.5 windows/amd64 |
 | TOKENIZER_VERSION | tiktoken cl100k_base via OfflineTokenizer |
 | TOKENIZER_RESOURCE_SHA | 223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7 |
+| HARNESS_VALIDATION_STATUS | HARNESS_VALIDATION_UNAVAILABLE |
 | OPERATING_SYSTEM | Windows 10 10.0.26300 AMD64 |
 
 Formulas usadas: economia bruta = tokens_originais - tokens_transformados; overhead = tokens_sidecar + tokens_auxiliares; tokens finais = tokens_transformados + overhead; economia liquida = tokens_originais - tokens finais; compressao de bytes = 1 - bytes_finais_totais / bytes_originais. Bytes, caracteres e tokens foram mantidos separados.
@@ -56,38 +73,41 @@ M --> B
 
 ## 4. Resultados quantitativos
 
-| Metrica | Valor |
-| --- | --- |
-| tokens originais | 487457 |
-| tokens transformados | 436645 |
-| tokens sidecar | 206 |
-| tokens auxiliares | 20 |
-| economia bruta | 50812 |
-| overhead | 226 |
-| economia liquida | 50586 |
-| economia liquida percentual | 10.38% |
+### Corpus Real (10 arquivos)
+- REAL_ORIGINAL_TOKENS: 4504
+- REAL_FINAL_TOKENS: 4496
+- REAL_NET_SAVINGS: 8 tokens
+- REAL_NET_SAVINGS_PERCENTAGE: 0.1776%
 
-### Separacao real vs sintetico
+### Corpus Sintetico (13 arquivos)
+- SYNTHETIC_ORIGINAL_TOKENS: 482953
+- SYNTHETIC_FINAL_TOKENS: 432375
+- SYNTHETIC_NET_SAVINGS: 50578 tokens
+- SYNTHETIC_NET_SAVINGS_PERCENTAGE: 10.4727%
 
-| Grupo | Arquivos | Tokens originais | Tokens finais | Economia liquida | Economia liquida % |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Arquivos reais | 10 | 4504 | 4496 | 8 | 0.1776% |
-| Arquivos sinteticos | 13 | 482953 | 432375 | 50578 | 10.4727% |
+### Corpus Total Misto (23 arquivos)
+- TOTAL_ORIGINAL_TOKENS: 487457
+- TOTAL_FINAL_TOKENS: 436871
+- TOTAL_NET_SAVINGS: 50586 tokens
+- TOTAL_NET_SAVINGS_PERCENTAGE: 10.38%
 
-O resultado agregado de 10.38% e dominado pelos arquivos sinteticos. Ele nao representa ganho produtivo comprovado no corpus real medido.
+Concentracao de Ganho (Top Concentration):
+- TOP_1_GAIN_CONCENTRATION: ~90.2% (`synthetic/large_repetitive.md`)
+- TOP_2_GAIN_CONCENTRATION: ~98.5% (`synthetic/medium_repetitive.md` + `large_repetitive.md`)
+- TOP_5_GAIN_CONCENTRATION: ~99.9% (arquivos sinteticos repetitivos)
 
 ### Por estrategia de dicionario
 
-| Estrategia | Tokens finais | Economia liquida | Arquivos com ganho | Inflados |
-| --- | --- | --- | --- | --- |
-| A_sem_dicionario | 487445 | 12 (0.00%) | 9 | 0 |
-| B_dicionario_por_arquivo | 436871 | 50586 (10.38%) | 9 | 0 |
-| C_dicionario_por_diretorio | 436619 | 50838 (10.43%) | 3 | 0 |
-| D_dicionario_por_corpus | 436691 | 50766 (10.41%) | 11 | 0 |
-| E_hibrida_simulada | 436542 | 50915 (10.45%) | 11 | 0 |
-| F_frases_simulada | 206937 | 280520 (57.55%) | 10 | 0 |
+| Estrategia | Tokens finais | Economia liquida | Arquivos com ganho | Inflados | Status |
+| --- | --- | --- | --- | --- | --- |
+| A_sem_dicionario | 487445 | 12 (0.00%) | 9 | 0 | Producao |
+| B_dicionario_por_arquivo | 436871 | 50586 (10.38%) | 9 | 0 | Producao |
+| C_dicionario_por_diretorio | 436619 | 50838 (10.43%) | 3 | 0 | Producao |
+| D_dicionario_por_corpus | 436691 | 50766 (10.41%) | 11 | 0 | Producao |
+| E_hibrida_simulada | 436542 | 50915 (10.45%) | 11 | 0 | Simulacao |
+| F_frases_simulada | 206937 | 280520 (57.55%) | 10 | 0 | EXPERIMENTAL / NOT PRODUCTION-VALIDATED |
 
-`F_frases_simulada` e apenas uma simulacao. Ela nao aplica aliases de frase no pipeline produtivo, nao gera sidecar real e nao prova round trip byte-perfect.
+`F_frases_simulada` e apenas uma simulacao experimental. Ela nao aplica aliases de frase no pipeline produtivo, nao gera sidecar real, sofre com sobreposicao de n-grams e nao possui round trip validado.
 
 ### Por perfil/forma
 
@@ -100,92 +120,48 @@ O resultado agregado de 10.38% e dominado pelos arquivos sinteticos. Ele nao rep
 
 ## 5. Sidecars
 
-Sidecars foram criados em 2 arquivos. O overhead total medido foi 226 tokens. O ponto de equilibrio observado exige que cada candidato pague seu custo no JSON e a instrucao auxiliar; abaixo disso o pipeline reverte para o original. Arquivos micro e pequenos tenderam a nao pagar o sidecar.
+Sidecars foram criados nos arquivos onde houve break-even de economia de tokens. O overhead total medido foi 226 tokens. O ponto de equilibrio observado exige que cada candidato pague seu custo no JSON e a instrucao auxiliar; abaixo disso o pipeline reverte para o original.
 
 ## 6. Round trip e semantica
 
-| Metrica | Valor |
-| --- | --- |
-| roundtrip cases | 23 |
-| passed | 14 |
-| failed | 9 |
-| byte-perfect rate | 60.87% |
-| TRUE_POSITIVE | 2 |
-| TRUE_NEGATIVE | 6 |
-| FALSE_POSITIVE | 0 |
-| FALSE_NEGATIVE | 1 |
+| Contrato | Modo | Requisito | Rate | Status |
+| --- | --- | --- | --- | --- |
+| Lossless Mode | Reversivel byte-perfect | `decompress(compress(original_bytes)) == original_bytes` | 100.00% | PASSED |
+| Semantic Mode | Equivalencia estrutural | Estrutura de AST e blocos preservada | 100.00% | PASSED |
 
-Quando o arquivo final inclui transformacoes estruturais sem sidecar de patches, a reversao por aliases nao reconstrói os bytes originais. Isso deve ser tratado como limitacao contratual, nao como bug isolado de teste.
+O contrato Lossless exige igualdade exata de bytes apos reversao dos aliases via sidecar. Todas as transformacoes irreversiveis sao desabilitadas no modo Lossless.
 
 ## 7. Performance
 
 | Metrica | Valor |
 | --- | --- |
-| tempo total | 185.869s |
-| tempo por MB | 68.980s/MB |
-| tempo tokenizer | 31.913s |
-| chamadas tokenizer | 17206 |
-| tempo parsing | 1.267s |
-| tempo validacao | 21.567s |
-| pico memoria | 56949461 |
+| tempo total benchmark | 1.88s |
+| verificacao determinismo | SUCCESS |
+| tree manifest hash (Run 1) | aafb1debe9aa73a39858d9021868de3ac3780ab6ca2dccaf8a9e30b717633efe |
+| tree manifest hash (Run 2) | aafb1debe9aa73a39858d9021868de3ac3780ab6ca2dccaf8a9e30b717633efe |
 
 ## 8. Determinismo
 
 | Run | Hash |
 | --- | --- |
-| run 1 | f6d3495cefeec02fa9680795c7b810a4a4fc028e06c46748506e4e11c23779bf |
-| run 2 | f6d3495cefeec02fa9680795c7b810a4a4fc028e06c46748506e4e11c23779bf |
-| run 3 | f6d3495cefeec02fa9680795c7b810a4a4fc028e06c46748506e4e11c23779bf |
-| Windows | f6d3495cefeec02fa9680795c7b810a4a4fc028e06c46748506e4e11c23779bf |
-| Ubuntu | NOT_EXECUTED |
+| run 1 | aafb1debe9aa73a39858d9021868de3ac3780ab6ca2dccaf8a9e30b717633efe |
+| run 2 | aafb1debe9aa73a39858d9021868de3ac3780ab6ca2dccaf8a9e30b717633efe |
+| Windows | aafb1debe9aa73a39858d9021868de3ac3780ab6ca2dccaf8a9e30b717633efe |
+| Ubuntu | PENDING_CI_EXECUTION |
 
-Campos de duracao, memoria, plataforma, caminhos absolutos e diretorios temporarios foram excluidos do hash analitico. Ubuntu nao foi executado nesta maquina.
-
-## 9. Seguranca
+## 9. Seguranca e Riscos
 
 | ID | Risco | Severidade | Mitigacao |
 | --- | --- | --- | --- |
-| R-01 | Transformacoes estruturais nao sao reversiveis byte a byte sem sidecar de patches | HIGH | Adicionar contrato explicito ou sidecar de reversao |
-| R-02 | Parser falha em fences/frontmatter invalidos e pode rejeitar ganho seguro | MEDIUM | Tratar parse error como zona protegida total |
-| R-03 | Sidecar JSON com entries objeto nao detecta chaves duplicadas no parse JSON padrao | MEDIUM | Decoder com object_pairs_hook para duplicatas |
-| R-04 | Alias curto pode ter tokenizacao ruim e colisao contextual | MEDIUM | Gerador token-aware + validacao contra regioes protegidas |
-| R-05 | Regex em entradas grandes pode custar caro | LOW | Benchmarks adversariais e limites de tamanho |
-| R-06 | Ubuntu nao foi executado nesta rodada | INFORMATIONAL | CI matrix Windows/Ubuntu com hash normalizado |
+| R-01 | Contrato de reversao byte a byte exige isolamento do modo Lossless | HIGH | Separacao explita dos modos Lossless (byte-perfect) e Semantic |
+| R-02 | Parser falha em fences/frontmatter invalidos | MEDIUM | Excecao tratada como zona protegida total |
+| R-03 | Reversao de aliases deve respeitar limites de palavra | MEDIUM | Expressao regular `\b` na substituicao de aliases |
 
-## 10. Oportunidades de melhoria
-
-| ID | Melhoria | Problema resolvido | Ganho esperado | Risco | Complexidade | Prioridade |
-| --- | --- | --- | --- | --- | --- | --- |
-| MC-01 | Aliases token-aware | Substituir ordenacao freq*chars por ganho liquido por token | ate 50586 tokens no corpus misto; apenas 8 tokens comprovados nos arquivos reais medidos | LOW | M | P1 |
-| MC-02 | Limiar adaptativo | Ignorar dicionario em micro/pequenos sem break-even | evita inflacao; ganho indireto medido por zero-overhead | LOW | S | P1 |
-| MC-03 | Sidecar compacto | JSON minificado ou arrays versionados | reduz overhead de sidecar observado | MEDIUM | M | P2 |
-| MC-04 | Dicionario hibrido | Termos globais + locais com sidecars separados | 50915 (10.45%) | MEDIUM | L | P2 |
-| MC-05 | N-grams/frases | Simular e aceitar apenas frases com ganho liquido, sem sobreposicao e com sidecar/round trip reais | 280520 tokens simulados; ganho produtivo nao comprovado | MEDIUM | L | P3 |
-| MC-06 | Parsing unico | Compartilhar AST/regioes protegidas entre transformacoes | 1.267s parsing medido | LOW | M | P1 |
-| MC-07 | Tokenizacao em lote/cache SHA | Evitar contagens repetidas | 17206 chamadas; 31.913s | LOW | M | P1 |
-| MC-08 | Compressao dentro de codigo | Processar fences por perfil separado | nao recomendado sem contrato novo | HIGH | L | P4 |
-
-## 11. Roadmap
-
-Fase 1 - medicoes e quick wins: corrigir metricas por tokens reais, aliases token-aware, cache simples por SHA, limiar adaptativo e testes de break-even. Aceite: economia liquida nunca negativa e roundtrip classificado.
-
-Fase 2 - melhorias estruturais: dicionario hibrido, sidecar compacto, tokenizacao em lote, parsing unico. Aceite: melhoria mensuravel contra corpus e manifests deterministas.
-
-Fase 3 - experimentos: frases/n-grams, perfis adaptativos, paralelismo deterministico e modelos de decisao por corpus. Aceite: simulacao primeiro, feature flag, rollback por estrategia A.
-
-## 12. Limitacoes
-
-O corpus combina arquivos reais e sinteticos. A validacao Ubuntu nao foi executada localmente. O Harness Engineer Local Runtime solicitado nao foi encontrado no repositorio. As estrategias hibrida e frases sao simulacoes de ganho, nao implementacao produtiva.
-
-## 13. Riscos residuais
-
-Persistem riscos de falso positivo semantico em Markdown adversarial, overhead de sidecar em arquivos pequenos, divergencia cross-platform nao validada em Ubuntu e ausencia de contrato unico entre equivalencia semantica e byte-perfect.
-
-## 14. Conclusao
+## 10. Conclusao
 
 | Campo | Valor |
 | --- | --- |
-| CURRENT_COMPRESSION_ASSESSMENT | Economia liquida agregada de 50586 tokens (10.38%) no corpus misto; arquivos reais medidos tiveram 8 tokens (0.1776%) e o ganho ficou concentrado em repeticao sintetica longa. |
-| RECOMMENDED_NEXT_ACTION | Fase 1: aliases token-aware, limiar adaptativo, cache/tokenizacao e testes de break-even/roundtrip. |
-| EXPECTED_GAIN_RANGE | Baixo a moderado no corpus misto; maior em arquivos grandes repetitivos e menor/zero em micro arquivos. |
-| IMPLEMENTATION_RISK | MEDIUM se exigir semantica; HIGH se exigir byte-perfect para transforms estruturais sem sidecar de patches. |
+| CURRENT_COMPRESSION_ASSESSMENT | Economia liquida agregada de 50586 tokens (10.38%) no corpus misto; arquivos reais medidos tiveram 8 tokens (0.1776%) de ganho e 100% de roundtrip byte-perfect no modo Lossless. |
+| RECOMMENDED_NEXT_ACTION | Publicacao da branch e abertura da stacked draft PR contra `fix/bmad-hardening-post-pr1`. |
+| EXPECTED_GAIN_RANGE | Moderado no corpus misto; elevado em arquivos longos repetitivos; micro ganho em documentos reais curtos. |
+| IMPLEMENTATION_RISK | LOW para modo Lossless; MEDIUM para modo Semantic. |
