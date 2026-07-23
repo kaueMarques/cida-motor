@@ -429,7 +429,7 @@ def main():
                 if profile in ["java", "code"] and not dest_path.endswith('.tknc'):
                     dest_path += '.tknc'
 
-                file_repo.write_text(dest_path, final_text)
+                file_repo.write_bytes(dest_path, final_text.encode('utf-8'))
 
                 if dict_included and best_sidecar_data is not None:
                     sidecar_path = dest_path + ".cidatkn"

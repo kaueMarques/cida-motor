@@ -5,19 +5,22 @@ from typing import List
 class PhysicalFilesystem:
     """Concrete implementation of filesystem repository."""
 
-    def read_text(self, filepath: str) -> str:
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            return f.read()
+    def read_text(self, filepath: str, encoding: str = "utf-8") -> str:
+        try:
+            with open(filepath, 'r', encoding=encoding, errors='strict', newline='') as f:
+                return f.read()
+        except UnicodeDecodeError as e:
+            from cida.domain.errors import EncodingValidationError
+            raise EncodingValidationError(f"Invalid {encoding} encoding in file {filepath}: {e}") from e
 
     def read_bytes(self, filepath: str) -> bytes:
         with open(filepath, 'rb') as f:
             return f.read()
 
-    def write_text(self, filepath: str, content: str) -> None:
+    def write_text(self, filepath: str, content: str, encoding: str = "utf-8") -> None:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-        content_lf = content.replace('\r\n', '\n')
-        with open(filepath, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(content_lf)
+        with open(filepath, 'w', encoding=encoding, newline='') as f:
+            f.write(content)
 
     def write_bytes(self, filepath: str, content: bytes) -> None:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)

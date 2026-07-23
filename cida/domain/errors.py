@@ -14,6 +14,10 @@ class SemanticValidationError(CidaError):
     """Raised when semantic/structural comparison checks fail."""
     exit_code = 3
 
+class EncodingValidationError(CidaError):
+    """Raised when file text decoding fails strict encoding validation."""
+    exit_code = 3
+
 class SourcePathError(CidaError):
     """Raised when the source directory or file is invalid/missing."""
     exit_code = 4
