@@ -12,7 +12,7 @@ A recomendacao principal e corrigir a decisao por ganho real de tokens, cachear 
 
 | Campo | Valor |
 | --- | --- |
-| REPOSITORY_ROOT | C:/Users/KABUM/IdeaProjects/cida-motor |
+| REPOSITORY_ROOT | <repository-root> |
 | BRANCH | refactor/python-clean-architecture |
 | HEAD_SHA | 6aaee045a1cc4f95fb6e767e8e20b6db75e86fb3 |
 | WORKING_TREE_STATUS | M .gitignore<br>A  cida/application/__init__.py<br>A  cida/application/generate_manifest.py<br>A  cida/application/generate_report.py<br>A  cida/application/optimize_corpus.py<br>A  cida/application/optimize_file.py<br>A  cida/application/ports.py<br>A  cida/application/validate_sidecar.py<br> M markdown/block_parser.py<br> M markdown/phrase_dictionary.py<br> M markdown/protected_regions.py<br> M markdown/report.py<br> M markdown/semantic_validator.py<br> M markdown/sidecar.py<br> M tests/test_integration.py<br> M token_counter.py<br> M token_optimizer.py<br> M translate.py<br>?? cida/__init__.py<br>?? cida/infrastructure/<br>?? cida/interfaces/<br>?? cida/markdown/<br>?? docs/<br>?? tests/architecture/<br>?? tests/test_contracts.py<br>?? tests/test_domain.py<br>?? tests/test_property.py |
