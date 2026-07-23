@@ -69,7 +69,6 @@ def test_optimize_corpus_empty_and_exception_branches(tmp_path):
     jc = JsonCodec()
     builder = MagicMock()
 
-    # Empty dictionary returned
     builder.build_corpus_dictionary.return_value = {}
     usecase = CorpusOptimizerUsecase(tok, fs, hs, jc, builder)
     f1 = tmp_path / "f1.md"
@@ -78,7 +77,6 @@ def test_optimize_corpus_empty_and_exception_branches(tmp_path):
     res = usecase.build_corpus_dict([str(f1)], str(tmp_path))
     assert res == ({}, "", 0, 0)
 
-    # Exception reading file
     mock_fs = MagicMock(spec=fs)
     mock_fs.is_binary_file.return_value = False
     mock_fs.read_text.side_effect = Exception("read fail")
@@ -110,7 +108,9 @@ def test_generate_report_formatting(tmp_path):
     )
     gen.make_deterministic(str(tmp_path))
     md = gen.generate_markdown(deterministic=True)
-    assert "# Relatório" in md
+    assert "# Relatório de Benchmark - CIDA Motor" in md
+    assert "file1.md" in md
+    assert "markdown" in md
 
 def test_generate_tree_manifest(tmp_path):
     fs = PhysicalFilesystem()
@@ -123,7 +123,10 @@ def test_generate_tree_manifest(tmp_path):
 
     manifest = gen.generate_tree_manifest(str(tmp_path))
     assert "tree_sha256" in manifest
+    assert len(manifest["tree_sha256"]) == 64
     assert len(manifest["files"]) == 1
+    assert manifest["files"][0]["path"] == "f1.txt"
+    assert manifest["files"][0]["sha256"] == hs.sha256(b"hello world")
 
 def test_sidecar_validator_usecase(tmp_path):
     fs = PhysicalFilesystem()

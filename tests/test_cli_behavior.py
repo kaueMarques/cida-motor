@@ -19,7 +19,7 @@ def test_counter_main_success():
     with patch("sys.stdin.read", return_value="test text"), \
          patch("builtins.print") as mock_print:
         counter_main()
-        mock_print.assert_called()
+        mock_print.assert_called_once_with(2)
 
 def test_counter_main_cida_error():
     with patch("sys.stdin.read", side_effect=TokenizerError("mock failure")), \
@@ -31,38 +31,38 @@ def test_counter_main_generic_error():
     with patch("sys.stdin.read", side_effect=Exception("crash")), \
          patch("sys.exit") as mock_exit:
         counter_main()
-        mock_exit.assert_called_with(2)
+        mock_exit.assert_called_with(6)
 
 def test_translate_main_no_args():
     with patch.object(sys, "argv", ["translate.py"]), \
          patch("builtins.print") as mock_print:
         translate_main()
-        mock_print.assert_called_with("Uso: python3 translate.py [ID1] [ID2] ... [--path <caminho_da_pasta_tknd>]")
+        mock_print.assert_called_with("Uso: python3 translate.py [ID1] [ID2] ... [--path <caminho_da_pasta_de_sidecars>]")
 
-def test_translate_main_missing_tknd_dir():
-    with patch.object(sys, "argv", ["translate.py", "AA", "--path", "/non/existent/tknd/dir/cida"]), \
+def test_translate_main_missing_sidecar_dir():
+    with patch.object(sys, "argv", ["translate.py", "AA", "--path", "/non/existent/sidecar/dir/cida"]), \
          patch("sys.exit") as mock_exit:
         translate_main()
         mock_exit.assert_called_with(5)
 
-def test_translate_main_with_valid_tknd(tmp_path):
-    tknd_dir = tmp_path / "tknd"
-    tknd_dir.mkdir()
-    sidecar_file = tknd_dir / "test.cidatkn"
+def test_translate_main_with_valid_sidecar(tmp_path):
+    sidecar_dir = tmp_path / "sidecar"
+    sidecar_dir.mkdir()
+    sidecar_file = sidecar_dir / "test.cidatkn"
     sidecar_file.write_text('{"entries": {"AA": "hello"}}')
 
-    with patch.object(sys, "argv", ["translate.py", "AA", "BB", "--path", str(tknd_dir)]), \
+    with patch.object(sys, "argv", ["translate.py", "AA", "BB", "--path", str(sidecar_dir)]), \
          patch("builtins.print") as mock_print:
         translate_main()
         mock_print.assert_called_with({"AA": "hello", "BB": "Não encontrado"})
 
 def test_translate_main_corrupted_sidecar(tmp_path):
-    tknd_dir = tmp_path / "tknd"
-    tknd_dir.mkdir()
-    sidecar_file = tknd_dir / "bad.cidatkn"
+    sidecar_dir = tmp_path / "sidecar"
+    sidecar_dir.mkdir()
+    sidecar_file = sidecar_dir / "bad.cidatkn"
     sidecar_file.write_text('corrupted json')
 
-    with patch.object(sys, "argv", ["translate.py", "AA", "--path", str(tknd_dir)]), \
+    with patch.object(sys, "argv", ["translate.py", "AA", "--path", str(sidecar_dir)]), \
          patch("sys.exit") as mock_exit:
         translate_main()
         mock_exit.assert_called_with(5)

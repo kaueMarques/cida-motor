@@ -98,12 +98,13 @@ def test_offline_tokenizer_count_edge_cases():
         with pytest.raises(TokenizerError, match="Tokenizer error: Encoding crash"):
             tok.count("hello")
 
-def test_hash_service():
+def test_hash_service_known_digests():
     hs = HashService()
-    assert len(hs.sha256(b"hello")) == 64
-    assert len(hs.sha256("hello")) == 64
-    assert len(hs.sha1(b"hello")) == 40
-    assert len(hs.sha1("hello")) == 40
+    # Explicit known SHA-256 and SHA-1 digests for b"hello"
+    assert hs.sha256(b"hello") == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    assert hs.sha256("hello") == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    assert hs.sha1(b"hello") == "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
+    assert hs.sha1("hello") == "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
 
 def test_filesystem_edge_cases():
     fs = PhysicalFilesystem()
