@@ -17,4 +17,6 @@ manifest-*.json
 coverage.json
 htmlcov/
 .coverage.*
+Microsoft/
+
 

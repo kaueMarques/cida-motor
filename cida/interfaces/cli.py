@@ -32,7 +32,7 @@ def counter_main():
         sys.exit(ce.exit_code)
     except Exception as e:
         print(f"Unexpected error in token_counter: {e}", file=sys.stderr)
-        sys.exit(2)
+        sys.exit(6)
 
 def translate_main():
     try:
@@ -40,26 +40,29 @@ def translate_main():
         json_codec = JsonCodec()
 
         if len(sys.argv) < 2:
-            print("Uso: python3 translate.py [ID1] [ID2] ... [--path <caminho_da_pasta_tknd>]")
+            print("Uso: python3 translate.py [ID1] [ID2] ... [--path <caminho_da_pasta_de_sidecars>]")
             return
 
-        tknd_dir = os.path.join(os.getcwd(), "tknd")
+        sidecar_dir = os.path.join(os.getcwd(), "sidecar")
+        if not file_repo.exists(sidecar_dir) and file_repo.exists(os.path.join(os.getcwd(), "tknd")):
+            sidecar_dir = os.path.join(os.getcwd(), "tknd")
+
         args = sys.argv[1:]
         if "--path" in args:
             idx = args.index("--path")
             if idx + 1 < len(args):
-                tknd_dir = args[idx+1]
+                sidecar_dir = args[idx+1]
                 args = args[:idx] + args[idx+2:]
 
         mapping = {}
-        if not file_repo.exists(tknd_dir):
-            print(f"Erro: Pasta {tknd_dir} não encontrada.", file=sys.stderr)
+        if not file_repo.exists(sidecar_dir):
+            print(f"Erro: Pasta {sidecar_dir} não encontrada.", file=sys.stderr)
             sys.exit(5)
 
-        for file in file_repo.list_dir(tknd_dir):
+        for file in file_repo.list_dir(sidecar_dir):
             if file.endswith(".cidatkn"):
                 try:
-                    data = json_codec.decode(file_repo.read_text(os.path.join(tknd_dir, file)))
+                    data = json_codec.decode(file_repo.read_text(os.path.join(sidecar_dir, file)))
                     if isinstance(data, dict) and "entries" in data:
                         for alias, val in data["entries"].items():
                             mapping[alias] = val
@@ -82,12 +85,13 @@ def main():
         parser = argparse.ArgumentParser(description="Token-oriented Markdown Minifier for BMAD")
         parser.add_argument("--src", required=True, help="Source directory or file")
         parser.add_argument("--dst", required=True, help="Destination directory")
+        parser.add_argument("--mode", default="lossless", choices=["lossless", "semantic"], help="Compression mode")
         parser.add_argument("--profile", default="auto", choices=["auto", "code", "java", "markdown", "bmad"], help="Processing profile")
         parser.add_argument("--dictionary-scope", default="file", choices=["none", "file", "corpus"], help="Dictionary scope")
         parser.add_argument("--fail-on-inflation", action="store_true", help="Fail if any file has token count inflation")
         parser.add_argument("--report", default="both", choices=["text", "json", "both"], help="Report format")
         parser.add_argument("--report-path", default="report", help="Report output path (without extension)")
-        parser.add_argument("--verify-semantics", action="store_true", default=True, help="Run semantic validations")
+        parser.add_argument("--verify-semantics", action=argparse.BooleanOptionalAction, default=True, help="Run semantic validations")
         parser.add_argument("--dry-run", action="store_true", help="Dry run mode (no files written)")
         parser.add_argument("--java-raw-json", help="Path to temporary Java raw metrics JSON")
 
@@ -104,20 +108,42 @@ def main():
         if not file_repo.exists(src_abs):
             raise SourcePathError(f"Source not found: {src_abs}")
 
+        java_raw_metrics = []
+
+
+        java_processed_relpaths = set()
+        if args.java_raw_json and file_repo.exists(args.java_raw_json):
+            try:
+                java_raw_metrics = json_codec.decode(file_repo.read_text(args.java_raw_json))
+                file_repo.remove(args.java_raw_json)
+                for entry in java_raw_metrics:
+                    java_processed_relpaths.add(entry["filepath"].replace('\\', '/'))
+            except Exception as je:
+                print(f"Warning: failed to read Java raw metrics JSON: {je}")
+
+        supported_exts = ('.md', '.txt', '.py', '.java', '.go', '.js', '.ts')
         files_to_process = []
         if file_repo.is_file(src_abs):
-            if src_abs.endswith('.md') or src_abs.endswith('.txt'):
+            if any(src_abs.endswith(ext) for ext in supported_exts):
                 files_to_process.append(src_abs)
+            else:
+                raise SourcePathError(f"Unsupported file extension: {src_abs}")
         else:
             for filepath in file_repo.list_files(src_abs):
                 if dst_abs in file_repo.abspath(filepath):
                     continue
                 name = os.path.basename(filepath)
-                if "tknd" in filepath or "_mimificado" in name:
+                if "tknd" in filepath or "sidecar" in filepath or "_mimificado" in name:
                     continue
-                if filepath.endswith('.md') or filepath.endswith('.txt'):
+                rel_p = file_repo.relpath(filepath, src_abs).replace('\\', '/')
+                if rel_p in java_processed_relpaths or name in java_processed_relpaths:
+                    continue
+                if any(filepath.endswith(ext) for ext in supported_exts):
                     files_to_process.append(filepath)
         files_to_process.sort()
+
+        if not files_to_process and not java_raw_metrics:
+            raise SourcePathError(f"No processable files found in source: {src_abs}")
 
         report_gen = ReportGeneratorUsecase(file_repo, json_codec)
         file_opt = FileOptimizerUsecase(token_counter, file_repo, hash_service, json_codec)
@@ -125,13 +151,6 @@ def main():
         corpus_opt = CorpusOptimizerUsecase(token_counter, file_repo, hash_service, json_codec, dictionary_builder)
         sidecar_val = SidecarValidatorUsecase(file_repo, json_codec, hash_service)
 
-        java_raw_metrics = []
-        if args.java_raw_json and file_repo.exists(args.java_raw_json):
-            try:
-                java_raw_metrics = json_codec.decode(file_repo.read_text(args.java_raw_json))
-                file_repo.remove(args.java_raw_json)
-            except Exception as je:
-                print(f"Warning: failed to read Java raw metrics JSON: {je}")
 
         for entry in java_raw_metrics:
             orig_content = entry["original_content"]
@@ -263,13 +282,15 @@ def main():
             if profile in ["markdown", "bmad"]:
                 current_text = content
 
-                candidates = [
-                    ("remove_html_comments", remove_html_comments),
-                    ("trim_trailing_whitespace", trim_trailing_whitespace),
-                    ("normalize_newlines", normalize_newlines),
-                    ("table_whitespace", table_whitespace),
-                    ("list_compaction", list_compaction),
-                ]
+                candidates = []
+                if args.mode == "semantic":
+                    candidates = [
+                        ("remove_html_comments", remove_html_comments),
+                        ("trim_trailing_whitespace", trim_trailing_whitespace),
+                        ("normalize_newlines", normalize_newlines),
+                        ("table_whitespace", table_whitespace),
+                        ("list_compaction", list_compaction),
+                    ]
 
                 for name, trans_fn in candidates:
                     candidate_text = trans_fn(current_text)
@@ -380,8 +401,9 @@ def main():
 
             exec_time = time.time() - start_time
 
-            if args.verify_semantics:
+            if args.verify_semantics and profile in ["markdown", "bmad"]:
                 validation_dict = {}
+
                 if dict_included:
                     if best_sidecar_data:
                         validation_dict = {v: k for k, v in best_sidecar_data["entries"].items()}

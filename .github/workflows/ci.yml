@@ -54,11 +54,19 @@ jobs:
         python -m ruff check .
         python -m mypy cida
 
+    - name: Lossless End-to-End Contract
+      run: python -m pytest tests/test_lossless_roundtrip.py -q
+
+    - name: Architecture Boundaries
+      run: python -m pytest tests/architecture -q
+
     - name: Coverage Gate
       run: python -m pytest --cov=cida --cov-branch --cov-fail-under=90
 
+
     - name: Clean Workspace Gate
       run: python scripts/check_clean_workspace.py
+
 
   benchmark:
     name: Benchmark on ${{ matrix.os }}
