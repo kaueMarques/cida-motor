@@ -28,7 +28,7 @@ def main():
         sys.exit(ce.exit_code)
     except Exception as e:
         print(f"Unexpected error during decompression: {e}", file=sys.stderr)
-        sys.exit(5)
+        sys.exit(6)
 
 if __name__ == "__main__":
     main()
