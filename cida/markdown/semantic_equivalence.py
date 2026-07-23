@@ -2,6 +2,7 @@ import re
 import yaml  # type: ignore
 from cida.markdown.parser import parse_markdown, has_frontmatter_at_document_start
 from cida.domain.policies import classify_comment
+from cida.markdown.protected_regions import ProtectedRegionsManager
 
 class UniqueKeyLoader(yaml.SafeLoader):
     def construct_mapping(self, node, deep=False):
@@ -144,11 +145,19 @@ def validate_semantics(original_text, minified_text, dictionary=None):
         minified_clean = clean_comments(minified_text)
 
         decompiled_text = minified_clean
+        if decompiled_text.startswith("> 🤖 AI RAG DICT: "):
+            parts = decompiled_text.split("\n\n", 1)
+            if len(parts) > 1:
+                decompiled_text = parts[1]
+
         if dictionary:
+            pm = ProtectedRegionsManager()
+            protected_text = pm.protect(decompiled_text)
             sorted_dict = sorted(dictionary.items(), key=lambda x: len(x[0]), reverse=True)
             for original_word, alias in sorted_dict:
                 pattern = re.compile(rf'\b{re.escape(alias)}\b')
-                decompiled_text = pattern.sub(original_word, decompiled_text)
+                protected_text = pattern.sub(original_word, protected_text)
+            decompiled_text = pm.restore(protected_text)
 
         orig_blocks = parse_markdown(original_clean)
         decomp_blocks = parse_markdown(decompiled_text)
