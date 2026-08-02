@@ -2,6 +2,14 @@ import os
 import sys
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
+
+from cida.application.selective_alias_resolution import build_alias_index_artifacts, SelectiveAliasResolver, corpus_chunk_filename
+from cida.infrastructure.filesystem import PhysicalFilesystem
+from cida.infrastructure.hashing import HashService
+from cida.infrastructure.json_codec import JsonCodec
+from cida.interfaces.cli import main
+from devtools.runtime_harness_probe import RuntimeHarnessProbe
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -75,3 +83,81 @@ def test_runtime_executes_without_external_harness(tmp_path):
         assert "POST_MERGE_REMEDIATION" not in combined_output
         assert "HARNESS" not in combined_output.upper()
         assert (dst_dir / "sample.md").exists()
+
+
+def test_python_runtime_has_zero_harness_activity_under_probe(tmp_path):
+    src_dir = tmp_path / "src"
+    dst_dir = tmp_path / "dst"
+    src_dir.mkdir()
+    (src_dir / "sample.md").write_text("# Hello\n\nPlain runtime content.\n", encoding="utf-8")
+
+    args = [
+        "token_optimizer.py",
+        "--src", str(src_dir),
+        "--dst", str(dst_dir),
+        "--validation-level", "balanced",
+        "--report", "json",
+        "--report-path", str(dst_dir / "report"),
+    ]
+
+    env = {"TIKTOKEN_CACHE_DIR": str(REPO_ROOT / "resources")}
+    with patch.object(sys, "argv", args), patch.dict(os.environ, env), RuntimeHarnessProbe() as probe:
+        main()
+
+    assert probe.counters == {
+        "harness_imports": 0,
+        "harness_file_reads": 0,
+        "harness_subprocesses": 0,
+        "harness_environment_accesses": 0,
+        "harness_module_discovery": 0,
+        "harness_initializations": 0,
+        "harness_tokens_loaded": 0,
+    }
+
+
+def test_tknc_alias_lookup_has_zero_harness_activity_under_probe(tmp_path):
+    tknd = tmp_path / "tknd"
+    tknd.mkdir()
+    fs = PhysicalFilesystem()
+    hs = HashService()
+    jc = JsonCodec()
+    dictionary_id = hs.sha256(b"dictionary")
+    manifest_sha256 = hs.sha256(b"manifest")
+    chunk_name = corpus_chunk_filename(0)
+    entries = {"AA": "replacement"}
+    sidecar_data = {
+        "format": "cida-token-sidecar",
+        "version": 2,
+        "source": "corpus",
+        "dictionary_id": dictionary_id,
+        "manifest_sha256": manifest_sha256,
+        "chunk_index": 0,
+        "chunk_count": 1,
+        "entries_sha256": hs.sha256(jc.canonical_encode(entries).encode("utf-8")),
+        "entries": entries,
+    }
+    serialized = jc.encode(sidecar_data, indent=4)
+    (tknd / chunk_name).write_text(serialized, encoding="utf-8", newline="\n")
+    artifacts = build_alias_index_artifacts(
+        {"AA": chunk_name},
+        dictionary_id,
+        {chunk_name: hs.sha256(serialized.encode("utf-8"))},
+        hs,
+        jc,
+        manifest_sha256=manifest_sha256,
+        chunk_entry_counts={chunk_name: 1},
+        chunk_entries_sha256={chunk_name: sidecar_data["entries_sha256"]},
+    )
+    for segment_path, segment_data in artifacts.segments.items():
+        full_segment = tknd / segment_path
+        full_segment.parent.mkdir(parents=True, exist_ok=True)
+        full_segment.write_text(jc.encode(segment_data, indent=4), encoding="utf-8", newline="\n")
+    (tknd / "alias-index.json").write_text(jc.encode(artifacts.root, indent=4), encoding="utf-8", newline="\n")
+
+    resolver = SelectiveAliasResolver(fs, jc, hs)
+    with RuntimeHarnessProbe() as probe:
+        result = resolver.resolve({"AA"}, str(tknd))
+
+    assert result.resolved == {"AA": "replacement"}
+    assert result.chunks_loaded == (chunk_name,)
+    assert all(value == 0 for value in probe.counters.values())

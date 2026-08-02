@@ -3,11 +3,14 @@ import tempfile
 import shutil
 from typing import List
 
+from cida.domain.errors import SidecarValidationError
+
 class PhysicalFilesystem:
     """Concrete implementation of filesystem repository."""
 
-    def __init__(self, durable: bool = False):
+    def __init__(self, durable: bool = False, atomic: bool = True):
         self.durable = durable
+        self.atomic = atomic
         self._created_dirs: set[str] = set()
 
     def read_text(self, filepath: str, encoding: str = "utf-8") -> str:
@@ -22,6 +25,19 @@ class PhysicalFilesystem:
         with open(filepath, 'rb') as f:
             return f.read()
 
+    def file_size(self, filepath: str) -> int:
+        return os.stat(filepath).st_size
+
+    def read_bytes_limited(self, filepath: str, max_bytes: int) -> bytes:
+        size = self.file_size(filepath)
+        if size > max_bytes:
+            raise SidecarValidationError(f"Sidecar artifact exceeds size limit before read: {filepath}")
+        with open(filepath, 'rb') as f:
+            data = f.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise SidecarValidationError(f"Sidecar artifact exceeds size limit during read: {filepath}")
+        return data
+
     def write_text(self, filepath: str, content: str, encoding: str = "utf-8", durable: bool = False) -> None:
         abs_path = os.path.abspath(filepath)
         dir_name = os.path.dirname(abs_path)
@@ -29,6 +45,10 @@ class PhysicalFilesystem:
             os.makedirs(dir_name, exist_ok=True)
             self._created_dirs.add(dir_name)
         content_lf = content.replace('\r\n', '\n')
+        if not (durable or self.durable or self.atomic):
+            with open(abs_path, 'w', encoding=encoding, newline='\n') as f:
+                f.write(content_lf)
+            return
         fd, tmp_path = tempfile.mkstemp(dir=dir_name, prefix=".tmp-")
         try:
             with os.fdopen(fd, 'w', encoding=encoding, newline='\n') as f:
@@ -50,6 +70,10 @@ class PhysicalFilesystem:
         if dir_name not in self._created_dirs:
             os.makedirs(dir_name, exist_ok=True)
             self._created_dirs.add(dir_name)
+        if not (durable or self.durable or self.atomic):
+            with open(abs_path, 'wb') as f:
+                f.write(content)
+            return
         fd, tmp_path = tempfile.mkstemp(dir=dir_name, prefix=".tmp-")
         try:
             with os.fdopen(fd, 'wb') as f:
