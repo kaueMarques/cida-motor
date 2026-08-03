@@ -1,66 +1,31 @@
-# CIDA Motor
-### Companheira de Desenvolvimento com IA
+# CIDA-MOTOR
 
-![Go](https://img.shields.io/badge/Language-Go-blue)
-![Python](https://img.shields.io/badge/Language-Python-yellow)
+O CIDA-MOTOR é um motor de transpilação projetado para otimizar e preparar código-fonte para modelos de linguagem (IA). Ele reduz o tamanho do código, removendo ruídos (comentários, anotações, espaços desnecessários) e criando um dicionário de tokens para tornar o contexto mais eficiente.
 
-Ferramenta CLI para tokenização, minificação e compressão de projetos ou arquivos de texto.
+## Como usar
 
-## Funcionalidades Principais
+O CIDA-MOTOR agora roda automaticamente em modo *watcher* (observador), monitorando alterações na pasta de origem em tempo real.
 
-*   **Compilação (Minificação/Tokenização):** Compacta arquivos individuais, pastas inteiras ou monitora diretórios para compilação em tempo real.
-*   **Descompilação:** Recupera o código/texto original a partir de arquivos compilados.
-*   **Gestão de Dicionário:** Busca rápida de IDs por palavras, palavras por IDs e adição de novas palavras ao dicionário de tokens.
-*   **Estatísticas:** Visualize o ratio de compressão e ganho de espaço.
-*   **Inspeção:** Analise a estrutura dos arquivos compilados.
+### Como compilar
 
-## Como Usar
+Para gerar o binário do motor, utilize o compilador Go:
 
-O projeto utiliza o `motor_v3.go` como motor de processamento principal.
+```bash
+go build motor_v3.go
+```
 
 ### Execução
 
-Para rodar a versão em Go, utilize o comando:
+Para rodar o motor, basta executar o binário passando a pasta de origem do código que você deseja processar:
 
 ```bash
-go run motor_v3.go <pasta_original> [pasta_destino] [--watcher]
+./motor_v3 <pasta_do_seu_projeto> <pasta_de_saida> 
 ```
 
-*   `<pasta_original>`: Caminho da pasta que contém o código a ser minificado/tokenizado.
-*   `[pasta_destino]`: (Opcional) Pasta onde os arquivos processados serão salvos. Se omitido, será criada uma pasta com o nome `[pasta_original]_mimificado`.
-*   `[--watcher]`: (Opcional) Ativa o modo de monitoramento (watcher) em tempo real, recompilando automaticamente ao detectar alterações.
+Se você não passar nenhum argumento, ele utilizará o diretório atual (`.`) como pasta de origem.
 
-## Como utilizar com IA
+### O que acontece?
 
-Após a conclusão da minificação:
-
-1. Acesse a pasta de destino gerada (ex: `pasta_mimificada`).
-2. Utilize o arquivo `PROMPT_INICIAL.MD` encontrado dentro desta pasta como contexto inicial ou prompt de sistema no seu CLI de LLM.
-3. Isso garante que a IA compreenda a estrutura tokenizada e o contexto técnico necessário para processar o código minificado.
-
-## Estrutura do Projeto
-
-*   `motor_v3.go`: Motor principal de processamento (versão Go de alta performance).
-*   `motor_v2.py`: Versão legada do motor de processamento (Py).
-*   `md_minifier.py`: Módulo específico para minificação de arquivos Markdown.
-*   `token_counter.py` / `token.py`: Lógica relacionada à contagem e gestão de tokens.
-*   `tests/`: Suite de testes para garantir a integridade da tokenização e minificação.
-## Perfis de Recursos
-
-```bash
-go run motor_v3.go <pasta_original> [pasta_destino] [--resource-profile light|medium|hard] [--workers N]
-```
-
-| Perfil | Objetivo | Workers |
-| --- | --- | --- |
-| default | compatibilidade | 10 |
-| light | baixo consumo | `max(1, min(4, logical_cpus / 2))` |
-| medium | equilibrio | `min(10, max(2, logical_cpus))` |
-| hard | alto throughput | `min(64, max(10, logical_cpus * 2))` |
-| custom | controle manual | `--workers N` |
-
-Precedencia: `--workers` explicito sobrescreve `--resource-profile`; `--resource-profile` explicito sobrescreve o default; sem flags o motor usa 10 workers.
-
-## Dependencias
-
-Runtime permitido: Python stdlib, Go stdlib e `tiktoken`. Desenvolvimento/CI: `pytest`, `hypothesis`, `pytest-cov`, `pytest-mock`, `ruff` e `mypy`. A politica completa esta em `docs/DEPENDENCY_POLICY.md`.
+1. Ao iniciar, o motor monitora a pasta informada.
+2. Sempre que qualquer arquivo na pasta for alterado, o motor detecta automaticamente, reprocessa os arquivos e gera uma versão minificada e tokenizada na pasta de destino (que, por padrão, é criada automaticamente com o sufixo `_mimificado`).
+3. O modo *watcher* continuará rodando até que você interrompa o processo (pressione `Ctrl+C` no terminal).
